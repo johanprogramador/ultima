@@ -473,46 +473,30 @@ function FloorPlan() {
   // Función para guardar posición
   const savePosition = async () => {
     try {
-      // Convertir explícitamente los tipos de datos para asegurar compatibilidad
-      const fila = Number.parseInt(newPosition.fila, 10)
-
-      // Crear un objeto básico con solo los campos esenciales primero
-      // Omitir el ID para nuevas posiciones para que el backend lo asigne
-      const isEdit = newPosition.id && !newPosition.id.toString().startsWith("pos_")
-
-      const basicData = {
-        // Solo incluir ID si es una edición y el ID es numérico
-        ...(isEdit ? { id: newPosition.id } : {}),
+      // Convertir explícitamente los tipos de datos
+      const fila = Number.parseInt(newPosition.fila, 10);
+      
+      // Crear objeto con estructura simplificada primero
+      const dataToSend = {
         nombre: newPosition.nombre || "",
         tipo: newPosition.tipo || "",
         estado: newPosition.estado || "disponible",
         detalles: newPosition.detalles || "",
         fila: fila,
         columna: newPosition.columna,
-        // El color ahora se determina por el servicio, pero mantenemos el campo por compatibilidad
         color: newPosition.servicio ? getServiceColor(newPosition.servicio) : COLOR_DEFAULT,
         colorFuente: newPosition.colorFuente || "#000000",
-        piso: newPosition.piso || "PISO1",
-      }
-
-      // Agregar campos adicionales con cuidado
-      const dataToSend = {
-        ...basicData,
-        // Campos opcionales con valores por defecto seguros
         colorOriginal: newPosition.colorOriginal || "",
         borde: Boolean(newPosition.borde),
         bordeDoble: Boolean(newPosition.bordeDoble),
-
-        // Manejar campos de relación con cuidado
+        piso: newPosition.piso || "PISO1",
         sede: newPosition.sede || null,
         servicio: newPosition.servicio || null,
-
-        // Asegurar que dispositivos sea un array simple de IDs
-        dispositivos: Array.isArray(newPosition.dispositivos)
-          ? newPosition.dispositivos.filter((d) => d).map((d) => (typeof d === "object" ? d.id : d))
+        // Asegurar que dispositivos sea un array de IDs
+        dispositivos: Array.isArray(newPosition.dispositivos) 
+          ? newPosition.dispositivos.map(d => typeof d === 'object' ? d.id : d)
           : [],
-
-        // Asegurar que bordeDetalle sea un objeto simple
+        // Simplificar bordeDetalle
         bordeDetalle: {
           top: Boolean(newPosition.bordeDetalle?.top),
           right: Boolean(newPosition.bordeDetalle?.right),
@@ -523,72 +507,59 @@ function FloorPlan() {
           bottomDouble: Boolean(newPosition.bordeDetalle?.bottomDouble),
           leftDouble: Boolean(newPosition.bordeDetalle?.leftDouble),
         },
-
-        // Asegurar que mergedCells sea un array simple con estructura correcta
-        mergedCells:
-          Array.isArray(newPosition.mergedCells) && newPosition.mergedCells.length > 0
-            ? newPosition.mergedCells.map((cell) => ({
-                row: Number.parseInt(cell.row, 10),
-                col: cell.col,
-              }))
-            : [{ row: fila, col: newPosition.columna }],
+        // Simplificar mergedCells
+        mergedCells: Array.isArray(newPosition.mergedCells) && newPosition.mergedCells.length > 0
+          ? newPosition.mergedCells.map(cell => ({
+              row: Number(cell.row),
+              col: cell.col
+            }))
+          : [{ row: fila, col: newPosition.columna }]
+      };
+  
+      // Si es edición, agregar el ID
+      if (newPosition.id && !isNaN(newPosition.id)) {
+        dataToSend.id = newPosition.id;
       }
-
-      const method = isEdit ? "put" : "post"
-      const url = isEdit ? `${API_URL}api/posiciones/${newPosition.id}/` : `${API_URL}api/posiciones/`
-
-      console.log("Enviando datos:", JSON.stringify(dataToSend, null, 2)) // Logging detallado
-
-      // Intentar primero con JSON
-      try {
-        const response = await axios[method](url, dataToSend, {
-          headers: {
-            "Content-Type": "application/json",
-            Accept: "application/json",
-          },
-        })
-
-        console.log("Respuesta del servidor:", response.data)
-        showNotification("Posición guardada correctamente")
-        fetchPositions()
-        setIsModalOpen(false)
-        clearSelection()
-      } catch (jsonError) {
-        console.error("Error al enviar como JSON:", jsonError)
-
-        // Si falla con JSON, intentar con FormData como alternativa
-        const formData = new FormData()
-        Object.entries(dataToSend).forEach(([key, value]) => {
-          if (key === "mergedCells" || key === "bordeDetalle" || key === "dispositivos") {
-            formData.append(key, JSON.stringify(value))
-          } else {
-            formData.append(key, value)
-          }
-        })
-
-        const formResponse = await axios[method](url, formData)
-        console.log("Respuesta del servidor (FormData):", formResponse.data)
-        showNotification("Posición guardada correctamente")
-        fetchPositions()
-        setIsModalOpen(false)
-        clearSelection()
-      }
+  
+      console.log("Datos a enviar:", JSON.stringify(dataToSend, null, 2));
+  
+      const method = newPosition.id ? "put" : "post";
+      const url = newPosition.id 
+        ? `${API_URL}api/posiciones/${newPosition.id}/` 
+        : `${API_URL}api/posiciones/`;
+  
+      const response = await axios[method](url, dataToSend, {
+        headers: {
+          "Content-Type": "application/json",
+        }
+      });
+  
+      console.log("Respuesta del servidor:", response.data);
+      showNotification("Posición guardada correctamente");
+      fetchPositions();
+      setIsModalOpen(false);
+      clearSelection();
+  
     } catch (error) {
-      console.error("Error al guardar posición:", error)
-      console.error("Detalles del error:", error.response?.data)
-
-      let errorMessage = "Error al guardar la posición"
+      console.error("Error al guardar posición:", error);
+      console.error("Detalles del error:", error.response?.data);
+      
+      let errorMessage = "Error al guardar la posición";
       if (error.response?.data) {
-        if (typeof error.response.data === "object") {
-          errorMessage += ": " + JSON.stringify(error.response.data)
+        // Intentar mostrar errores de validación del backend
+        if (typeof error.response.data === 'object') {
+          const validationErrors = Object.entries(error.response.data)
+            .map(([field, errors]) => `${field}: ${Array.isArray(errors) ? errors.join(', ') : errors}`)
+            .join('\n');
+          errorMessage += `:\n${validationErrors}`;
         } else {
-          errorMessage += ": " + error.response.data
+          errorMessage += `: ${error.response.data}`;
         }
       }
-
-      showNotification(errorMessage, "error")
+      
+      showNotification(errorMessage, "error");
     }
-  }
+  };
 
   const deletePosition = async (id) => {
     try {
