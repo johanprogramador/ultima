@@ -64,7 +64,7 @@ background-color: var(--background);
 }
 
 /* Typography */
-h1 {
+.h11 {
 font-size: 1.875rem;
 font-weight: 700;
 margin-bottom: 2rem;
@@ -73,6 +73,9 @@ color: var(--text);
 letter-spacing: -0.025em;
 }
 
+.pp {
+  color: white;
+}
 /* Controls container */
 .controls-container {
 background: var(--surface);
@@ -254,6 +257,7 @@ overflow: auto;
 max-height: 70vh;
 position: relative;
 box-shadow: var(--shadow);
+color: var(--text);
 }
 
 /* Table styles */
@@ -378,6 +382,11 @@ position: relative;
 box-shadow: var(--shadow-lg);
 border: 1px solid var(--border);
 animation: modalShow 0.2s ease;
+}
+
+
+.merged-cell-item {
+  color: white;
 }
 
 @keyframes modalShow {

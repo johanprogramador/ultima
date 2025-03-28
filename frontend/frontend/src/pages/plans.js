@@ -29,7 +29,7 @@ const PISOS = [
 
 // Ya no necesitamos la lista de colores predefinidos, ya que los colores vendrán del servicio
 // Mantenemos solo el color por defecto para cuando no hay servicio asignado
-const COLOR_DEFAULT = "#B0BEC5"
+const COLOR_DEFAULT = "#ffff"
 
 const ESTADOS = [
   { value: "disponible", label: "Disponible", color: "green" },
@@ -1279,8 +1279,7 @@ function FloorPlan() {
 
   return (
     <div className="dashboard-container">
-      <h1>Sistema de Gestión de Planos de Piso</h1>
-
+      <div className="container-plano">
       <div className="controls-container">
         <div className="tabs">
           {PISOS.map((piso) => (
@@ -1306,16 +1305,16 @@ function FloorPlan() {
             />
           </div>
 
-          <button className="action-button" onClick={handleAddNewPosition}>
+          <button className="action-buttonn" onClick={handleAddNewPosition}>
             <FaPlus /> Nueva Posición
           </button>
 
-          <button className="action-button" onClick={exportToExcel}>
+          <button className="action-buttonn" onClick={exportToExcel}>
             <FaUpload /> Exportar
           </button>
 
           <div className="import-container">
-            <button className="action-button" onClick={() => document.getElementById("import-excel").click()}>
+            <button className="action-buttonn" onClick={() => document.getElementById("import-excel").click()}>
               <FaDownload /> Importar
             </button>
             <input
@@ -1421,8 +1420,8 @@ function FloorPlan() {
         <div className="modal-overlay">
           <div className="modal">
             <div className="loader"></div>
-            <h2>Cargando posiciones...</h2>
-            <p>Por favor, espera mientras se procesan los datos.</p>
+            <h2 className="h11">Cargando posiciones...</h2>
+            <p className="pp">Por favor, espera mientras se procesan los datos.</p>
           </div>
         </div>
       )}
@@ -1450,7 +1449,7 @@ function FloorPlan() {
             >
               <FaTimes />
             </button>
-            <h2>{newPosition.id ? "Editar Posición" : "Agregar Posición"}</h2>
+            <h2 className="h11">{newPosition.id ? "Editar Posición" : "Agregar Posición"}</h2>
 
             <div className="form-grid">
               <div className="form-group">
@@ -1741,6 +1740,7 @@ function FloorPlan() {
         </div>
       )}
     </div>
+      </div>
   )
 }
 
