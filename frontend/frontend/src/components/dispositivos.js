@@ -56,9 +56,15 @@ const Dispositivos = () => {
   const fetchPosiciones = async () => {
     try {
       const response = await axios.get("http://127.0.0.1:8000/api/posiciones/");
-      setPosiciones(response.data);
+      if (response.data && Array.isArray(response.data.results)) {
+        setPosiciones(response.data.results);
+      } else {
+        console.error("La respuesta de posiciones no tiene el formato esperado:", response.data);
+        setPosiciones([]);
+      }
     } catch (error) {
       console.error("Error al obtener posiciones:", error);
+      setPosiciones([]);
     }
   };
 
@@ -76,6 +82,19 @@ const Dispositivos = () => {
       setSedes([]);
     }
   };
+
+  const validateDevice = (device) => {
+    if (!device.modelo || !device.serial) {
+      setAlert({
+        show: true,
+        message: "El modelo y el serial son campos obligatorios.",
+        type: "error"
+      });
+      return false;
+    }
+    return true;
+  };
+  
 
   // Crear un nuevo dispositivo
   const addDevice = async () => {
@@ -151,15 +170,6 @@ const Dispositivos = () => {
         type: "error",
       });
     }
-  };
-
-  // Validar datos del dispositivo
-  const validateDevice = (device) => {
-    if (!device.modelo || !device.serial) {
-      alert("El modelo y el serial son campos obligatorios.");
-      return false;
-    }
-    return true;
   };
 
   // Obtener el ícono según el tipo de dispositivo
@@ -403,10 +413,12 @@ const DeviceForm = ({ device, setDevice, onSubmit, posiciones, sedes }) => {
         { value: "OTRO", label: "Otro" },
       ])}
       {renderInput("Razón Social", "razon_social", device, setDevice)}
-      {renderSelect("Posición", "posicion", device, setDevice, posiciones.map(pos => ({
-        value: pos.id,
-        label: pos.nombre,
-      })))}
+      {renderSelect("Posición", "posicion", device, setDevice, 
+  posiciones.map(pos => ({
+    value: pos.id,
+    label: pos.nombre,
+  }))
+)}
       {renderSelect("Sede", "sede", device, setDevice, Array.isArray(sedes) ? sedes.map(sede => ({
   value: sede.id,
   label: sede.nombre,
