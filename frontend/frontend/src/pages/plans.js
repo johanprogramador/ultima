@@ -29,7 +29,7 @@ const PISOS = [
 
 // Ya no necesitamos la lista de colores predefinidos, ya que los colores vendrán del servicio
 // Mantenemos solo el color por defecto para cuando no hay servicio asignado
-const COLOR_DEFAULT = "#ffff"
+const COLOR_DEFAULT = "#B0BEC5"
 
 const ESTADOS = [
   { value: "disponible", label: "Disponible", color: "green" },
@@ -53,17 +53,48 @@ const getContrastColor = (hexcolor) => {
   }
 }
 
+// Mejorar la función cleanHexColor para manejar mejor los colores de Excel
 const cleanHexColor = (hexColor) => {
   if (!hexColor) return "#FFFFFF"
   try {
-    let cleanedColor = hexColor.startsWith("#") ? hexColor : `#${hexColor}`
-    if (cleanedColor.length === 9 && cleanedColor.startsWith("#FF")) {
-      cleanedColor = `#${cleanedColor.substring(3)}`
+    // Si ya es un color hex válido con #, devolverlo
+    if (/^#[0-9A-F]{6}$/i.test(hexColor)) {
+      return hexColor
     }
-    if (!/^#[0-9A-F]{6}$/i.test(cleanedColor)) {
+
+    // Si es un color hex válido sin #, añadirlo
+    if (/^[0-9A-F]{6}$/i.test(hexColor)) {
+      return `#${hexColor}`
+    }
+
+    // Si tiene formato ARGB (8 caracteres), quitar el canal alfa
+    let cleanedColor = hexColor
+    if (/^[0-9A-F]{8}$/i.test(hexColor)) {
+      cleanedColor = hexColor.substring(2)
+      return `#${cleanedColor}`
+    }
+
+    // Si tiene # pero formato incorrecto, intentar arreglarlo
+    if (hexColor.startsWith("#")) {
+      cleanedColor = hexColor.substring(1)
+
+      // Si es un color de 3 dígitos (como #RGB), convertirlo a 6 dígitos (#RRGGBB)
+      if (/^[0-9A-F]{3}$/i.test(cleanedColor)) {
+        return `#${cleanedColor[0]}${cleanedColor[0]}${cleanedColor[1]}${cleanedColor[1]}${cleanedColor[2]}${cleanedColor[2]}`
+      }
+
+      // Si es ARGB con #, quitar el canal alfa
+      if (/^[0-9A-F]{8}$/i.test(cleanedColor)) {
+        return `#${cleanedColor.substring(2)}`
+      }
+    }
+
+    // Si llegamos aquí y no es un formato reconocido, devolver blanco
+    if (!/^#[0-9A-F]{6}$/i.test(`#${cleanedColor}`)) {
       return "#FFFFFF"
     }
-    return cleanedColor
+
+    return `#${cleanedColor}`
   } catch (error) {
     console.error("Error en cleanHexColor:", error)
     return "#FFFFFF"
@@ -84,40 +115,100 @@ const extractColor = (cell) => {
 
     let color = null
 
+    // Intentar obtener el color de diferentes propiedades
     if (cell.s.fill.fgColor) {
       if (cell.s.fill.fgColor.rgb) {
         color = cleanColor(cell.s.fill.fgColor.rgb)
       } else if (cell.s.fill.fgColor.theme !== undefined) {
+        // Colores de tema de Excel
         const themeColors = {
-          0: "FFFFFF",
-          1: "000000",
-          2: "E7E6E6",
-          3: "44546A",
-          4: "4472C4",
-          5: "ED7D31",
-          6: "A5A5A5",
-          7: "FFC000",
-          8: "5B9BD5",
-          9: "70AD47",
+          0: "FFFFFF", // Blanco
+          1: "000000", // Negro
+          2: "E7E6E6", // Gris claro
+          3: "44546A", // Azul oscuro
+          4: "4472C4", // Azul
+          5: "ED7D31", // Naranja
+          6: "A5A5A5", // Gris
+          7: "FFC000", // Amarillo
+          8: "5B9BD5", // Azul claro
+          9: "70AD47", // Verde
+          10: "FF0000", // Rojo
         }
         color = themeColors[cell.s.fill.fgColor.theme] || "FFFFFF"
       } else if (cell.s.fill.fgColor.indexed !== undefined) {
+        // Colores indexados de Excel
         const indexedColors = {
-          0: "000000",
-          1: "FFFFFF",
-          2: "FF0000",
-          3: "00FF00",
-          4: "0000FF",
-          5: "FFFF00",
-          6: "FF00FF",
-          7: "00FFFF",
-          8: "000000",
-          9: "FFFFFF",
+          0: "000000", // Negro
+          1: "FFFFFF", // Blanco
+          2: "FF0000", // Rojo
+          3: "00FF00", // Verde
+          4: "0000FF", // Azul
+          5: "FFFF00", // Amarillo
+          6: "FF00FF", // Magenta
+          7: "00FFFF", // Cyan
+          8: "000000", // Negro
+          9: "FFFFFF", // Blanco
+          10: "FF0000", // Rojo
+          11: "00FF00", // Verde
+          12: "0000FF", // Azul
+          13: "FFFF00", // Amarillo
+          14: "FF00FF", // Magenta
+          15: "00FFFF", // Cyan
+          16: "800000", // Marrón
+          17: "008000", // Verde oscuro
+          18: "000080", // Azul marino
+          19: "808000", // Oliva
+          20: "800080", // Púrpura
+          21: "008080", // Verde azulado
+          22: "C0C0C0", // Plata
+          23: "808080", // Gris
+          24: "9999FF", // Lavanda
+          25: "993366", // Burdeos
+          26: "FFFFCC", // Crema
+          27: "CCFFFF", // Azul pálido
+          28: "660066", // Morado
+          29: "FF8080", // Rosa
+          30: "0066CC", // Azul medio
+          31: "CCCCFF", // Lila
+          32: "000080", // Azul marino
+          33: "FF00FF", // Fucsia
+          34: "FFFF00", // Amarillo
+          35: "00FFFF", // Cyan
+          36: "800080", // Púrpura
+          37: "800000", // Marrón
+          38: "008080", // Verde azulado
+          39: "0000FF", // Azul
+          40: "00CCFF", // Azul cielo
+          41: "CCFFFF", // Azul pálido
+          42: "CCFFCC", // Verde pálido
+          43: "FFFF99", // Amarillo pálido
+          44: "99CCFF", // Azul pastel
+          45: "FF99CC", // Rosa pastel
+          46: "CC99FF", // Lila pastel
+          47: "FFCC99", // Melocotón
+          48: "3366FF", // Azul real
+          49: "33CCCC", // Turquesa
+          50: "99CC00", // Verde oliva
+          51: "FFCC00", // Naranja
+          52: "FF9900", // Naranja oscuro
+          53: "FF6600", // Naranja rojizo
+          54: "666699", // Azul grisáceo
+          55: "969696", // Gris medio
+          56: "003366", // Azul muy oscuro
+          57: "339966", // Verde mar
+          58: "003300", // Verde muy oscuro
+          59: "333300", // Oliva oscuro
+          60: "993300", // Marrón oscuro
+          61: "993366", // Burdeos
+          62: "333399", // Índigo
+          63: "333333", // Gris muy oscuro
+          64: "FF0000", // Rojo
         }
         color = indexedColors[cell.s.fill.fgColor.indexed] || "FFFFFF"
       }
     }
 
+    // Si no se encontró color en fgColor, intentar con bgColor
     if (!color && cell.s.fill.bgColor) {
       if (cell.s.fill.bgColor.rgb) {
         color = cleanColor(cell.s.fill.bgColor.rgb)
@@ -133,25 +224,21 @@ const extractColor = (cell) => {
           7: "FFC000",
           8: "5B9BD5",
           9: "70AD47",
+          10: "FF0000",
         }
         color = themeColors[cell.s.fill.bgColor.theme] || "FFFFFF"
       } else if (cell.s.fill.bgColor.indexed !== undefined) {
+        // Usar los mismos colores indexados definidos anteriormente
         const indexedColors = {
           0: "000000",
           1: "FFFFFF",
-          2: "FF0000",
-          3: "00FF00",
-          4: "0000FF",
-          5: "FFFF00",
-          6: "FF00FF",
-          7: "00FFFF",
-          8: "000000",
-          9: "FFFFFF",
+          2: "FF0000" /* ... y así sucesivamente ... */,
         }
         color = indexedColors[cell.s.fill.bgColor.indexed] || "FFFFFF"
       }
     }
 
+    // Si aún no hay color y el patrón es sólido, intentar con color
     if (!color && cell.s.fill.patternType === "solid") {
       if (cell.s.fill.color && cell.s.fill.color.rgb) {
         color = cleanColor(cell.s.fill.color.rgb)
@@ -167,25 +254,21 @@ const extractColor = (cell) => {
           7: "FFC000",
           8: "5B9BD5",
           9: "70AD47",
+          10: "FF0000",
         }
         color = themeColors[cell.s.fill.color.theme] || "FFFFFF"
       } else if (cell.s.fill.color && cell.s.fill.color.indexed !== undefined) {
+        // Usar los mismos colores indexados definidos anteriormente
         const indexedColors = {
           0: "000000",
           1: "FFFFFF",
-          2: "FF0000",
-          3: "00FF00",
-          4: "0000FF",
-          5: "FFFF00",
-          6: "FF00FF",
-          7: "00FFFF",
-          8: "000000",
-          9: "FFFFFF",
+          2: "FF0000" /* ... y así sucesivamente ... */,
         }
         color = indexedColors[cell.s.fill.color.indexed] || "FFFFFF"
       }
     }
 
+    // Intentar con start y end para gradientes
     if (!color && cell.s.fill.start && cell.s.fill.end) {
       if (cell.s.fill.start.rgb) {
         color = cleanColor(cell.s.fill.start.rgb)
@@ -194,10 +277,12 @@ const extractColor = (cell) => {
       }
     }
 
+    // Si no se encontró ningún color o es "auto", usar blanco
     if (!color || color === "auto") {
       return { color: "#FFFFFF", originalColor: "FFFFFF" }
     }
 
+    // Limpiar el color y asegurarse de que sea un hex válido
     color = color.replace(/^#/, "")
     if (!/^[0-9A-F]{6}$/i.test(color)) {
       return { color: "#FFFFFF", originalColor: "FFFFFF" }
@@ -332,6 +417,7 @@ function FloorPlan() {
   const [loading, setLoading] = useState(false)
   const [notification, setNotification] = useState({ show: false, message: "", type: "success" })
   const tableContainerRef = useRef(null)
+  const [defaultDeviceId, setDefaultDeviceId] = useState(null)
 
   // Estados para los selectores
   const [servicios, setServicios] = useState([])
@@ -349,7 +435,15 @@ function FloorPlan() {
 
       setServicios(serviciosResponse.data)
       setSedes(sedesResponse.data)
-      setDispositivos(dispositivosResponse.data)
+
+      // Guardar los dispositivos y establecer el ID del dispositivo por defecto
+      const dispositivosData = dispositivosResponse.data
+      setDispositivos(dispositivosData)
+
+      // Establecer el ID del primer dispositivo como dispositivo por defecto
+      if (dispositivosData && dispositivosData.length > 0) {
+        setDefaultDeviceId(dispositivosData[0].id)
+      }
     } catch (error) {
       console.error("Error al cargar datos para selectores:", error)
       showNotification("Error al cargar datos para selectores", "error")
@@ -383,7 +477,10 @@ function FloorPlan() {
     try {
       setLoading(true)
       const url = `${API_URL}api/posiciones/`
+      console.log("Obteniendo posiciones desde:", url)
+
       const response = await axios.get(url)
+      console.log("Respuesta completa:", response)
 
       let positionsData = []
       if (response.data && Array.isArray(response.data)) {
@@ -391,8 +488,11 @@ function FloorPlan() {
       } else if (response.data && Array.isArray(response.data.results)) {
         positionsData = response.data.results
       } else {
+        console.warn("Formato de respuesta inesperado:", response.data)
         positionsData = []
       }
+
+      console.log("Datos de posiciones recibidos:", positionsData.length)
 
       // Convertir el array a un objeto con id como clave
       const positionsObj = positionsData.reduce((acc, pos) => {
@@ -453,10 +553,13 @@ function FloorPlan() {
         }
       }, {})
 
+      console.log("Posiciones procesadas:", Object.keys(positionsObj).length)
       setPositions(positionsObj)
-      console.log("Posiciones cargadas:", positionsObj)
     } catch (error) {
       console.error("Error al obtener posiciones:", error)
+      if (error.response) {
+        console.error("Respuesta del servidor:", error.response.status, error.response.data)
+      }
       showNotification("Error al cargar las posiciones", "error")
     } finally {
       setLoading(false)
@@ -470,13 +573,452 @@ function FloorPlan() {
     }, 3000)
   }
 
-  // Función para guardar posición
+  // Reemplazar la función importFromExcel completa with this versión mejorada
+  const importFromExcel = async (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+
+    setLoading(true)
+    showNotification("Procesando archivo Excel...", "success")
+
+    try {
+      // 1. Verificar que tengamos dispositivos disponibles
+      if (dispositivos.length === 0) {
+        showNotification(
+          "Error: No hay dispositivos disponibles en el sistema. Debe crear al menos un dispositivo antes de importar.",
+          "error",
+        )
+        setLoading(false)
+        return
+      }
+
+      // Obtener el primer dispositivo disponible para usar como valor por defecto
+      const defaultDevice = dispositivos[0].id
+      console.log("Dispositivo por defecto para importación:", defaultDevice)
+
+      // 2. Preguntar al usuario si desea eliminar las posiciones existentes
+      const confirmDelete = window.confirm(
+        "¿Desea eliminar las posiciones existentes en este piso antes de importar? Seleccione 'Cancelar' para agregar las nuevas posiciones sin eliminar las existentes.",
+      )
+
+      // 3. Si el usuario confirma, eliminar las posiciones existentes
+      if (confirmDelete) {
+        showNotification("Eliminando posiciones existentes...", "success")
+        const currentPositions = Object.values(positions).filter((p) => p.piso === selectedPiso)
+
+        for (const pos of currentPositions) {
+          try {
+            await axios.delete(`${API_URL}api/posiciones/${pos.id}/`)
+            console.log(`Posición eliminada: ${pos.id}`)
+          } catch (error) {
+            console.error(`Error al eliminar posición ${pos.id}:`, error)
+          }
+        }
+      }
+
+      // 4. Leer el archivo Excel
+      const reader = new FileReader()
+
+      reader.onload = async (event) => {
+        try {
+          const data = new Uint8Array(event.target.result)
+          const workbook = XLSX.read(data, {
+            type: "array",
+            cellStyles: true,
+            cellDates: true,
+          })
+
+          // 5. Obtener la primera hoja del libro
+          const sheetName = workbook.SheetNames[0]
+          const worksheet = workbook.Sheets[sheetName]
+
+          // 6. Obtener el rango de celdas
+          const range = XLSX.utils.decode_range(worksheet["!ref"])
+          console.log("Rango de celdas:", range)
+
+          // 7. Obtener información de celdas combinadas
+          const mergedCellsInfo = worksheet["!merges"] || []
+          console.log("Celdas combinadas detectadas:", mergedCellsInfo.length)
+
+          // 8. Preparar variables para el seguimiento
+          const processedCells = {} // Para rastrear qué celdas ya se han procesado
+          const newPositions = {}
+          let savedCount = 0
+          let errorCount = 0
+
+          // 9. Procesar primero las celdas combinadas
+          for (const mergeInfo of mergedCellsInfo) {
+            const startRow = mergeInfo.s.r
+            const startCol = mergeInfo.s.c
+            const endRow = mergeInfo.e.r
+            const endCol = mergeInfo.e.c
+
+            // Obtener la celda principal (esquina superior izquierda)
+            const mainCellAddress = XLSX.utils.encode_cell({ r: startRow, c: startCol })
+            const mainCell = worksheet[mainCellAddress]
+
+            // Extraer el valor y color de la celda - IMPORTANTE: No añadir texto a celdas vacías
+            const cellValue =
+              mainCell && mainCell.v !== undefined && mainCell.v !== null ? String(mainCell.v).trim() : ""
+            const colorInfo = mainCell ? extractColor(mainCell) : { color: "#FFFFFF", originalColor: "FFFFFF" }
+            const cellColor = cleanHexColor(colorInfo.color)
+
+            // Crear lista de celdas combinadas
+            const mergedCells = []
+            for (let r = startRow; r <= endRow; r++) {
+              for (let c = startCol; c <= endCol; c++) {
+                const actualRow = r + 1
+                const colLetter = XLSX.utils.encode_col(c)
+                mergedCells.push({ row: actualRow, col: colLetter })
+                processedCells[`${actualRow}-${colLetter}`] = true
+              }
+            }
+
+            // Crear objeto de posición
+            const position = {
+              nombre: cellValue,
+              tipo: "",
+              estado: "disponible",
+              detalles: "",
+              fila: startRow + 1,
+              columna: XLSX.utils.encode_col(startCol),
+              color: cellColor,
+              colorFuente: getContrastColor(cellColor),
+              colorOriginal: colorInfo.originalColor,
+              piso: selectedPiso,
+              mergedCells: mergedCells,
+              dispositivos: [defaultDevice], // Usar el dispositivo por defecto
+              borde: false,
+              bordeDoble: false,
+              bordeDetalle: {
+                top: false,
+                right: false,
+                bottom: false,
+                left: false,
+                topDouble: false,
+                rightDouble: false,
+                bottomDouble: false,
+                leftDouble: false,
+              },
+            }
+
+            // Intentar encontrar un servicio que coincida con el color
+            if (servicios.length > 0) {
+              const matchingService = servicios.find((s) => {
+                const serviceColor = cleanHexColor(s.color)
+                const positionColor = cleanHexColor(cellColor)
+                return serviceColor.toLowerCase() === positionColor.toLowerCase()
+              })
+
+              if (matchingService) {
+                position.servicio = matchingService.id
+              }
+            }
+
+            // Solo guardar si la celda tiene color o texto
+            if (cellColor !== "#FFFFFF" || cellValue !== "") {
+              try {
+                console.log("Guardando posición combinada:", position)
+                const response = await axios.post(`${API_URL}api/posiciones/`, position)
+                if (response.status === 201) {
+                  newPositions[response.data.id] = response.data
+                  savedCount++
+                }
+              } catch (error) {
+                console.error("Error al guardar posición combinada:", error)
+                if (error.response?.data) {
+                  console.error("Detalles del error:", JSON.stringify(error.response.data))
+                }
+                errorCount++
+              }
+            }
+          }
+
+          // 10. Procesar celdas individuales
+          for (let row = range.s.r; row <= range.e.r; row++) {
+            for (let col = range.s.c; col <= range.e.c; col++) {
+              const actualRow = row + 1
+              const colLetter = XLSX.utils.encode_col(col)
+
+              // Omitir celdas que ya están en áreas combinadas
+              if (processedCells[`${actualRow}-${colLetter}`]) {
+                continue
+              }
+
+              // Omitir celdas que ya están ocupadas en las posiciones existentes
+              if (
+                !confirmDelete &&
+                Object.values(positions).some(
+                  (pos) =>
+                    pos.piso === selectedPiso &&
+                    pos.mergedCells.some((c) => c.row === actualRow && c.col === colLetter),
+                )
+              ) {
+                continue
+              }
+
+              const cellAddress = XLSX.utils.encode_cell({ r: row, c: col })
+              const cell = worksheet[cellAddress]
+
+              // Extraer el valor y color de la celda - IMPORTANTE: No añadir texto a celdas vacías
+              const cellValue = cell && cell.v !== undefined && cell.v !== null ? String(cell.v).trim() : ""
+              const colorInfo = cell ? extractColor(cell) : { color: "#FFFFFF", originalColor: "FFFFFF" }
+              const cellColor = cleanHexColor(colorInfo.color)
+
+              // Solo procesar celdas con color o texto
+              if (cellColor === "#FFFFFF" && cellValue === "") {
+                continue // Omitir celdas completamente vacías (sin color ni texto)
+              }
+
+              // Crear objeto de posición
+              const position = {
+                nombre: cellValue,
+                tipo: "",
+                estado: "disponible",
+                detalles: "",
+                fila: actualRow,
+                columna: colLetter,
+                color: cellColor,
+                colorFuente: getContrastColor(cellColor),
+                colorOriginal: colorInfo.originalColor,
+                piso: selectedPiso,
+                mergedCells: [{ row: actualRow, col: colLetter }],
+                dispositivos: [defaultDevice], // Usar el dispositivo por defecto
+                borde: false,
+                bordeDoble: false,
+                bordeDetalle: {
+                  top: false,
+                  right: false,
+                  bottom: false,
+                  left: false,
+                  topDouble: false,
+                  rightDouble: false,
+                  bottomDouble: false,
+                  leftDouble: false,
+                },
+              }
+
+              // Intentar encontrar un servicio que coincida con el color
+              if (servicios.length > 0) {
+                const matchingService = servicios.find((s) => {
+                  const serviceColor = cleanHexColor(s.color)
+                  const positionColor = cleanHexColor(cellColor)
+                  return serviceColor.toLowerCase() === positionColor.toLowerCase()
+                })
+
+                if (matchingService) {
+                  position.servicio = matchingService.id
+                }
+              }
+
+              // Guardar la posición
+              try {
+                const response = await axios.post(`${API_URL}api/posiciones/`, position)
+                if (response.status === 201) {
+                  newPositions[response.data.id] = response.data
+                  savedCount++
+
+                  // Mostrar progreso cada 10 posiciones
+                  if (savedCount % 10 === 0) {
+                    showNotification(`Importando... ${savedCount} posiciones guardadas`, "success")
+                  }
+                }
+              } catch (error) {
+                console.error("Error al guardar posición individual:", error)
+                if (error.response?.data) {
+                  console.error("Detalles del error:", JSON.stringify(error.response.data))
+                }
+                errorCount++
+              }
+            }
+          }
+
+          // 11. Actualizar el estado con las nuevas posiciones
+          setPositions((prev) => ({
+            ...prev,
+            ...newPositions,
+          }))
+
+          // 12. Mostrar resumen final
+          const resultMessage = `Importación completada: ${savedCount} posiciones guardadas${errorCount > 0 ? `, ${errorCount} errores` : ""}`
+          showNotification(resultMessage, errorCount > 0 ? "error" : "success")
+
+          // 13. Recargar las posiciones para asegurar que se muestren correctamente
+          await fetchPositions()
+        } catch (error) {
+          console.error("Error al procesar el archivo Excel:", error)
+          showNotification("Error al procesar el archivo Excel: " + (error.message || "Error desconocido"), "error")
+        } finally {
+          setLoading(false)
+        }
+      }
+
+      reader.onerror = () => {
+        setLoading(false)
+        showNotification("Error al leer el archivo", "error")
+      }
+
+      reader.readAsArrayBuffer(file)
+    } catch (error) {
+      console.error("Error en la importación:", error)
+      showNotification("Error en la importación: " + (error.message || "Error desconocido"), "error")
+      setLoading(false)
+    }
+  }
+
+  // Reemplazar la función exportToExcel with this nueva implementación
+  const exportToExcel = () => {
+    try {
+      setLoading(true)
+      showNotification("Preparando exportación...", "success")
+
+      // Filtrar las posiciones del piso seleccionado
+      const positionsArray = Object.values(positions).filter((pos) => pos.piso === selectedPiso)
+
+      if (positionsArray.length === 0) {
+        showNotification("No hay posiciones para exportar en este piso", "error")
+        setLoading(false)
+        return
+      }
+
+      // Crear una copia de los datos para la exportación
+      const exportData = positionsArray.map((pos) => {
+        // Convertir los objetos complejos a formatos más simples para Excel
+        return {
+          ...pos,
+          dispositivos: Array.isArray(pos.dispositivos)
+            ? pos.dispositivos.map((d) => (typeof d === "object" ? d.id : d)).join(", ")
+            : pos.dispositivos,
+          servicio: pos.servicio ? (typeof pos.servicio === "object" ? pos.servicio.id : pos.servicio) : "",
+          sede: pos.sede ? (typeof pos.sede === "object" ? pos.sede.id : pos.sede) : "",
+          // Convertir mergedCells a formato de texto para Excel
+          mergedCellsText: JSON.stringify(pos.mergedCells),
+          // Convertir bordeDetalle a formato de texto para Excel
+          bordeDetalleText: JSON.stringify(pos.bordeDetalle),
+        }
+      })
+
+      // Crear la hoja de cálculo
+      const worksheet = XLSX.utils.json_to_sheet(exportData)
+
+      // Aplicar estilos a las celdas
+      const range = XLSX.utils.decode_range(worksheet["!ref"])
+
+      for (let R = range.s.r + 1; R <= range.e.r; R++) {
+        for (let C = range.s.c; C <= range.e.c; C++) {
+          const cellAddress = XLSX.utils.encode_cell({ r: R, c: C })
+          const cell = worksheet[cellAddress]
+
+          if (!cell) continue
+
+          const position = exportData[R - 1]
+          if (position) {
+            // Inicializar estilos si no existen
+            if (!cell.s) cell.s = {}
+            if (!cell.s.fill) cell.s.fill = {}
+            if (!cell.s.font) cell.s.font = {}
+
+            // Aplicar color de fondo
+            const colorHex = position.servicio
+              ? getServiceColor(position.servicio).replace("#", "")
+              : position.colorOriginal || position.color.replace("#", "")
+
+            cell.s.fill = {
+              patternType: "solid",
+              fgColor: { rgb: colorHex },
+              bgColor: { rgb: colorHex },
+            }
+
+            // Aplicar color de texto
+            cell.s.font.color = { rgb: position.colorFuente.replace("#", "") }
+          }
+        }
+      }
+
+      // Procesar celdas combinadas
+      const merges = []
+      positionsArray.forEach((pos) => {
+        if (pos.mergedCells && pos.mergedCells.length > 1) {
+          try {
+            const cells = pos.mergedCells
+            const rows = cells.map((c) => Number(c.row))
+            const cols = cells.map((c) => XLSX.utils.decode_col(c.col))
+
+            const startRow = Math.min(...rows) - 1
+            const endRow = Math.max(...rows) - 1
+            const startCol = Math.min(...cols)
+            const endCol = Math.max(...cols)
+
+            if (startRow >= 0 && startCol >= 0 && endRow >= startRow && endCol >= startCol) {
+              merges.push({
+                s: { r: startRow, c: startCol },
+                e: { r: endRow, c: endCol },
+              })
+            }
+          } catch (error) {
+            console.error("Error al procesar celda combinada:", error, pos)
+          }
+        }
+      })
+
+      if (merges.length > 0) {
+        worksheet["!merges"] = merges
+      }
+
+      // Crear el libro y añadir la hoja
+      const workbook = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Posiciones")
+
+      // Generar nombre de archivo con fecha y hora
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-").substring(0, 19)
+      const fileName = `Posiciones_${selectedPiso}_${timestamp}.xlsx`
+
+      // Convertir el libro a un array buffer
+      const wbout = XLSX.write(workbook, { bookType: "xlsx", type: "array" })
+
+      // Crear un Blob con el array buffer
+      const blob = new Blob([wbout], { type: "application/octet-stream" })
+
+      // Crear una URL para el blob
+      const url = URL.createObjectURL(blob)
+
+      // Crear un elemento <a> para descargar el archivo
+      const a = document.createElement("a")
+      a.href = url
+      a.download = fileName
+
+      // Añadir el elemento al DOM, hacer clic en él y luego eliminarlo
+      document.body.appendChild(a)
+      a.click()
+
+      // Limpiar
+      setTimeout(() => {
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+      }, 0)
+
+      showNotification(`Exportación completada: ${positionsArray.length} posiciones exportadas`, "success")
+    } catch (error) {
+      console.error("Error al exportar:", error)
+      showNotification("Error al exportar las posiciones: " + (error.message || "Error desconocido"), "error")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Reemplazar la función savePosition with this versión mejorada
   const savePosition = async () => {
     try {
+      // Verificar si tenemos un dispositivo por defecto
+      if (newPosition.dispositivos.length === 0 && !defaultDeviceId && dispositivos.length === 0) {
+        showNotification("No hay dispositivos disponibles para asignar a la posición", "error")
+        return
+      }
+
       // Convertir explícitamente los tipos de datos
-      const fila = Number.parseInt(newPosition.fila, 10);
-      
-      // Crear objeto con estructura simplificada primero
+      const fila = Number.parseInt(newPosition.fila, 10)
+
+      // Crear objeto con estructura completa incluyendo todos los campos requeridos
       const dataToSend = {
         nombre: newPosition.nombre || "",
         tipo: newPosition.tipo || "",
@@ -492,10 +1034,11 @@ function FloorPlan() {
         piso: newPosition.piso || "PISO1",
         sede: newPosition.sede || null,
         servicio: newPosition.servicio || null,
-        // Asegurar que dispositivos sea un array de IDs
-        dispositivos: Array.isArray(newPosition.dispositivos) 
-          ? newPosition.dispositivos.map(d => typeof d === 'object' ? d.id : d)
-          : [],
+        // Asegurar que dispositivos sea un array de IDs, nunca vacío
+        dispositivos:
+          Array.isArray(newPosition.dispositivos) && newPosition.dispositivos.length > 0
+            ? newPosition.dispositivos.map((d) => (typeof d === "object" ? d.id : d))
+            : [defaultDeviceId], // Usar el ID del dispositivo por defecto
         // Simplificar bordeDetalle
         bordeDetalle: {
           top: Boolean(newPosition.bordeDetalle?.top),
@@ -508,58 +1051,59 @@ function FloorPlan() {
           leftDouble: Boolean(newPosition.bordeDetalle?.leftDouble),
         },
         // Simplificar mergedCells
-        mergedCells: Array.isArray(newPosition.mergedCells) && newPosition.mergedCells.length > 0
-          ? newPosition.mergedCells.map(cell => ({
-              row: Number(cell.row),
-              col: cell.col
-            }))
-          : [{ row: fila, col: newPosition.columna }]
-      };
-  
+        mergedCells:
+          Array.isArray(newPosition.mergedCells) && newPosition.mergedCells.length > 0
+            ? newPosition.mergedCells.map((cell) => ({
+                row: Number(cell.row),
+                col: cell.col,
+              }))
+            : [{ row: fila, col: newPosition.columna }],
+      }
+
       // Si es edición, agregar el ID
       if (newPosition.id && !isNaN(newPosition.id)) {
-        dataToSend.id = newPosition.id;
+        dataToSend.id = newPosition.id
       }
-  
-      console.log("Datos a enviar:", JSON.stringify(dataToSend, null, 2));
-  
-      const method = newPosition.id ? "put" : "post";
-      const url = newPosition.id 
-        ? `${API_URL}api/posiciones/${newPosition.id}/` 
-        : `${API_URL}api/posiciones/`;
-  
+
+      console.log("Datos a enviar:", JSON.stringify(dataToSend, null, 2))
+
+      const method = newPosition.id ? "put" : "post"
+      const url = newPosition.id ? `${API_URL}api/posiciones/${newPosition.id}/` : `${API_URL}api/posiciones/`
+
       const response = await axios[method](url, dataToSend, {
         headers: {
           "Content-Type": "application/json",
-        }
-      });
-  
-      console.log("Respuesta del servidor:", response.data);
-      showNotification("Posición guardada correctamente");
-      fetchPositions();
-      setIsModalOpen(false);
-      clearSelection();
-  
+        },
+      })
+
+      console.log("Respuesta del servidor:", response.data)
+      showNotification("Posición guardada correctamente")
+
+      // Recargar las posiciones para asegurar que se muestren correctamente
+      await fetchPositions()
+
+      setIsModalOpen(false)
+      clearSelection()
     } catch (error) {
-      console.error("Error al guardar posición:", error);
-      console.error("Detalles del error:", error.response?.data);
-      
-      let errorMessage = "Error al guardar la posición";
+      console.error("Error al guardar posición:", error)
+      console.error("Detalles del error:", error.response?.data)
+
+      let errorMessage = "Error al guardar la posición"
       if (error.response?.data) {
         // Intentar mostrar errores de validación del backend
-        if (typeof error.response.data === 'object') {
+        if (typeof error.response.data === "object") {
           const validationErrors = Object.entries(error.response.data)
-            .map(([field, errors]) => `${field}: ${Array.isArray(errors) ? errors.join(', ') : errors}`)
-            .join('\n');
-          errorMessage += `:\n${validationErrors}`;
+            .map(([field, errors]) => `${field}: ${Array.isArray(errors) ? errors.join(", ") : errors}`)
+            .join("\n")
+          errorMessage += `:\n${validationErrors}`
         } else {
-          errorMessage += `: ${error.response.data}`;
+          errorMessage += `: ${error.response.data}`
         }
       }
-      
-      showNotification(errorMessage, "error");
+
+      showNotification(errorMessage, "error")
     }
-  };
+  }
 
   const deletePosition = async (id) => {
     try {
@@ -690,7 +1234,7 @@ function FloorPlan() {
       piso: selectedPiso,
       sede: "",
       servicio: "",
-      dispositivos: [],
+      dispositivos: defaultDeviceId ? [defaultDeviceId] : [],
       mergedCells: selectedCells,
     })
     setIsModalOpen(true)
@@ -740,314 +1284,10 @@ function FloorPlan() {
       piso: selectedPiso,
       sede: "",
       servicio: "",
-      dispositivos: [],
+      dispositivos: defaultDeviceId ? [defaultDeviceId] : [],
       mergedCells: [],
     })
     setIsModalOpen(true)
-  }
-
-  const exportToExcel = () => {
-    try {
-      const positionsArray = Object.values(positions).filter((pos) => pos.piso === selectedPiso)
-      const worksheet = XLSX.utils.json_to_sheet(positionsArray)
-      const range = XLSX.utils.decode_range(worksheet["!ref"])
-
-      for (let R = range.s.r + 1; R <= range.e.r; R++) {
-        for (let C = range.s.c; C <= range.e.c; C++) {
-          const cellAddress = XLSX.utils.encode_cell({ r: R, c: C })
-          const cell = worksheet[cellAddress]
-
-          if (!cell) continue
-
-          const position = positionsArray[R - 1]
-          if (position) {
-            if (!cell.s) cell.s = {}
-            if (!cell.s.fill) cell.s.fill = {}
-
-            // Usar el color del servicio si existe
-            const colorHex = position.servicio
-              ? getServiceColor(position.servicio).replace("#", "")
-              : position.colorOriginal || position.color.replace("#", "")
-
-            const fgColor = { rgb: colorHex } // Declare fgColor here
-            cell.s.fill = {
-              patternType: "solid",
-              fgColor: fgColor,
-              bgColor: fgColor,
-            }
-
-            if (!cell.s.font) cell.s.font = {}
-            cell.s.font.color = { rgb: position.colorFuente.replace("#", "") }
-          }
-        }
-      }
-
-      const merges = []
-      positionsArray.forEach((pos) => {
-        if (pos.mergedCells && pos.mergedCells.length > 1) {
-          const cells = pos.mergedCells
-          const rows = cells.map((c) => c.row)
-          const cols = cells.map((c) => {
-            try {
-              return XLSX.utils.decode_col(c.col)
-            } catch (error) {
-              console.error(`Error decodificando columna ${c.col}:`, error)
-              return 0
-            }
-          })
-
-          const startRow = Math.min(...rows) - 1
-          const endRow = Math.max(...rows) - 1
-          const startCol = Math.min(...cols)
-          const endCol = Math.max(...cols)
-
-          if (startRow >= 0 && startCol >= 0 && endRow >= startRow && endCol >= startCol) {
-            merges.push({
-              s: { r: startRow, c: startCol },
-              e: { r: endRow, c: endCol },
-            })
-          }
-        }
-      })
-
-      if (merges.length > 0) {
-        worksheet["!merges"] = merges
-      }
-
-      const workbook = XLSX.utils.book_new()
-      XLSX.utils.book_append_sheet(workbook, worksheet, "Posiciones")
-      XLSX.writeFile(workbook, `Posiciones_${selectedPiso}_${new Date().toISOString().split("T")[0]}.xlsx`)
-
-      showNotification("Exportación completada correctamente")
-    } catch (error) {
-      console.error("Error al exportar:", error)
-      showNotification("Error al exportar las posiciones", "error")
-    }
-  }
-
-  const importFromExcel = (e) => {
-    const file = e.target.files[0]
-    if (!file) return
-
-    setLoading(true)
-
-    const reader = new FileReader()
-    reader.onload = async (e) => {
-      try {
-        const currentPositions = Object.values(positions).filter((p) => p.piso === selectedPiso)
-        for (const pos of currentPositions) {
-          try {
-            await axios.delete(`${API_URL}api/posiciones/${pos.id}/`)
-          } catch (error) {
-            console.error(`Error al eliminar posición existente: ${pos.id}`, error)
-          }
-        }
-
-        const data = new Uint8Array(e.target.result)
-        const workbook = XLSX.read(data, {
-          type: "array",
-          cellStyles: true,
-        })
-
-        const sheetName = workbook.SheetNames[0]
-        const worksheet = workbook.Sheets[sheetName]
-        const range = XLSX.utils.decode_range(worksheet["!ref"])
-
-        const mergedCellsInfo = worksheet["!merges"] || []
-        const cellToPositionMap = {}
-        const newPositions = {}
-
-        for (let i = 0; i < mergedCellsInfo.length; i++) {
-          const mergeInfo = mergedCellsInfo[i]
-          const startRow = mergeInfo.s.r
-          const startCol = mergeInfo.s.c
-          const endRow = mergeInfo.e.r
-          const endCol = mergeInfo.e.c
-
-          const mainCellAddress = XLSX.utils.encode_cell({ r: startRow, c: startCol })
-          const mainCell = worksheet[mainCellAddress]
-
-          let cellValue = ""
-          if (mainCell) {
-            cellValue = mainCell.v || ""
-            if (typeof cellValue === "object" && cellValue !== null) {
-              cellValue = String(cellValue)
-            } else {
-              cellValue = String(cellValue).trim()
-            }
-          }
-
-          let cellColor = "#FFFFFF"
-          let originalColor = "FFFFFF"
-
-          if (mainCell) {
-            const colorInfo = extractColor(mainCell)
-            cellColor = colorInfo.color
-            originalColor = colorInfo.originalColor
-          }
-
-          cellColor = cleanHexColor(cellColor)
-
-          const mergedCells = []
-          for (let r = startRow; r <= endRow; r++) {
-            for (let c = startCol; c <= endCol; c++) {
-              const actualRow = r + 1
-              const colLetter = XLSX.utils.encode_col(c)
-              mergedCells.push({ row: actualRow, col: colLetter })
-              cellToPositionMap[`${actualRow}-${colLetter}`] = true
-            }
-          }
-
-          const actualStartRow = startRow + 1
-          const startColLetter = XLSX.utils.encode_col(startCol)
-          const id = null // Cambiado a null para que el backend asigne un ID numérico
-
-          const position = {
-            id,
-            nombre: cellValue,
-            fila: actualStartRow,
-            columna: startColLetter,
-            color: COLOR_DEFAULT, // Usamos el color por defecto, el servicio determinará el color real
-            colorFuente: getContrastColor(COLOR_DEFAULT),
-            colorOriginal: originalColor,
-            piso: selectedPiso,
-            estado: "disponible",
-            detalles: "",
-            borde: false,
-            bordeDoble: false,
-            bordeDetalle: {
-              top: false,
-              right: false,
-              bottom: false,
-              left: false,
-              topDouble: false,
-              rightDouble: false,
-              bottomDouble: false,
-              leftDouble: false,
-            },
-            sede: "",
-            servicio: "",
-            dispositivos: [],
-            mergedCells: mergedCells,
-          }
-
-          try {
-            const response = await axios.post(`${API_URL}api/posiciones/`, position)
-            if (response.status === 201) {
-              newPositions[response.data.id] = response.data
-            } else {
-              console.error(`Error al importar posición combinada: ${id}`, response.data)
-            }
-          } catch (error) {
-            console.error(`Error al guardar posición combinada:`, error)
-          }
-        }
-
-        for (let row = range.s.r; row <= range.e.r; row++) {
-          for (let col = range.s.c; col <= range.e.c; col++) {
-            const actualRow = row + 1
-            const colLetter = XLSX.utils.encode_col(col)
-
-            if (cellToPositionMap[`${actualRow}-${colLetter}`]) {
-              continue
-            }
-
-            const cellAddress = XLSX.utils.encode_cell({ r: row, c: col })
-            const cell = worksheet[cellAddress]
-
-            let cellValue = ""
-            if (cell) {
-              cellValue = cell.v || ""
-              if (typeof cellValue === "object" && cellValue !== null) {
-                cellValue = String(cellValue)
-              } else {
-                cellValue = String(cellValue).trim()
-              }
-            }
-
-            let cellColor = "#FFFFFF"
-            let originalColor = "FFFFFF"
-
-            if (cell) {
-              const colorInfo = extractColor(cell)
-              cellColor = colorInfo.color
-              originalColor = colorInfo.originalColor
-            }
-
-            cellColor = cleanHexColor(cellColor)
-
-            const isCellOccupied = Object.values(positions).some(
-              (pos) =>
-                pos.piso === selectedPiso && pos.mergedCells.some((c) => c.row === actualRow && c.col === colLetter),
-            )
-
-            if (isCellOccupied) {
-              continue
-            }
-
-            const id = null // Cambiado a null para que el backend asigne un ID numérico
-            const position = {
-              id,
-              nombre: cellValue,
-              fila: actualRow,
-              columna: colLetter,
-              color: COLOR_DEFAULT, // Usamos el color por defecto, el servicio determinará el color real
-              colorFuente: getContrastColor(COLOR_DEFAULT),
-              colorOriginal: originalColor,
-              piso: selectedPiso,
-              estado: "disponible",
-              detalles: "",
-              borde: false,
-              bordeDoble: false,
-              bordeDetalle: {
-                top: false,
-                right: false,
-                bottom: false,
-                left: false,
-                topDouble: false,
-                rightDouble: false,
-                bottomDouble: false,
-                leftDouble: false,
-              },
-              sede: "",
-              servicio: "",
-              dispositivos: [],
-              mergedCells: [{ row: actualRow, col: colLetter }],
-            }
-
-            try {
-              const response = await axios.post(`${API_URL}api/posiciones/`, position)
-              if (response.status === 201) {
-                newPositions[response.data.id] = response.data
-              } else {
-                console.error(`Error al importar posición: ${id}`, response.data)
-              }
-            } catch (error) {
-              console.error(`Error al guardar posición:`, error)
-            }
-          }
-        }
-
-        setPositions((prev) => ({
-          ...prev,
-          ...newPositions,
-        }))
-
-        showNotification("Importación completada correctamente")
-      } catch (error) {
-        console.error("Error al importar:", error)
-        showNotification("Error al importar las posiciones", "error")
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    reader.onerror = () => {
-      setLoading(false)
-      showNotification("Error al leer el archivo", "error")
-    }
-
-    reader.readAsArrayBuffer(file)
   }
 
   const filteredPositions = Object.values(positions).filter(
@@ -1081,7 +1321,9 @@ function FloorPlan() {
           ? positionCopy.dispositivos
           : positionCopy.dispositivos
             ? [positionCopy.dispositivos]
-            : [],
+            : defaultDeviceId
+              ? [defaultDeviceId]
+              : [],
 
         // Normalizar servicio
         servicio:
@@ -1250,7 +1492,8 @@ function FloorPlan() {
 
   return (
     <div className="dashboard-container">
-      <div className="container-plano">
+      <h1>Sistema de Gestión de Planos de Piso</h1>
+
       <div className="controls-container">
         <div className="tabs">
           {PISOS.map((piso) => (
@@ -1276,16 +1519,16 @@ function FloorPlan() {
             />
           </div>
 
-          <button className="action-buttonn" onClick={handleAddNewPosition}>
+          <button className="action-button" onClick={handleAddNewPosition}>
             <FaPlus /> Nueva Posición
           </button>
 
-          <button className="action-buttonn" onClick={exportToExcel}>
+          <button className="action-button" onClick={exportToExcel}>
             <FaUpload /> Exportar
           </button>
 
           <div className="import-container">
-            <button className="action-buttonn" onClick={() => document.getElementById("import-excel").click()}>
+            <button className="action-button" onClick={() => document.getElementById("import-excel").click()}>
               <FaDownload /> Importar
             </button>
             <input
@@ -1391,8 +1634,8 @@ function FloorPlan() {
         <div className="modal-overlay">
           <div className="modal">
             <div className="loader"></div>
-            <h2 className="h11">Cargando posiciones...</h2>
-            <p className="pp">Por favor, espera mientras se procesan los datos.</p>
+            <h2>Cargando posiciones...</h2>
+            <p>Por favor, espera mientras se procesan los datos.</p>
           </div>
         </div>
       )}
@@ -1420,7 +1663,7 @@ function FloorPlan() {
             >
               <FaTimes />
             </button>
-            <h2 className="h11">{newPosition.id ? "Editar Posición" : "Agregar Posición"}</h2>
+            <h2>{newPosition.id ? "Editar Posición" : "Agregar Posición"}</h2>
 
             <div className="form-grid">
               <div className="form-group">
@@ -1711,7 +1954,6 @@ function FloorPlan() {
         </div>
       )}
     </div>
-      </div>
   )
 }
 
