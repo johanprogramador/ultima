@@ -88,7 +88,7 @@ urlpatterns = [
     path('api/posiciones/', views.PosicionListCreateView.as_view(), name='posicion-list-create'),
     path('api/posiciones/<str:id>/', views.PosicionRetrieveUpdateDestroyView.as_view(), name='posicion-retrieve-update-destroy'),
     path('api/posiciones/colores-pisos/', views.get_colores_pisos, name='colores-pisos'),
-
+    path('api/posiciones/import/', views.import_positions, name='import-positions'),
 
 ]
 

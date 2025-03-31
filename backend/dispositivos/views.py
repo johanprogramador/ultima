@@ -863,3 +863,47 @@ def get_colores_pisos(request):
         "colores": dict(Posicion.COLORES),
         "pisos": dict(Posicion.PISOS),
     })
+
+
+# Añadir a views.py
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
+from rest_framework import status
+import json
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def import_positions(request):
+    positions = request.data
+    created_count = 0
+    errors = []
+    
+    # Obtener un dispositivo por defecto (puedes ajustar esta lógica)
+    default_device = Dispositivo.objects.first()
+    
+    if not default_device:
+        return Response({"error": "No hay dispositivos disponibles para asignar"}, 
+                        status=status.HTTP_400_BAD_REQUEST)
+    
+    for position_data in positions:
+        # Generar ID si no existe
+        if "id" not in position_data:
+            position_data["id"] = f"pos_{int(time.time())}"
+        
+        serializer = PosicionSerializer(data=position_data)
+        if serializer.is_valid():
+            position = serializer.save()
+            # Asignar el dispositivo por defecto
+            position.dispositivos.add(default_device)
+            created_count += 1
+        else:
+            errors.append({
+                "position": position_data.get("id", "unknown"),
+                "errors": serializer.errors
+            })
+    
+    return Response({
+        "created": created_count,
+        "errors": errors
+    }, status=status.HTTP_200_OK if created_count > 0 else status.HTTP_400_BAD_REQUEST)

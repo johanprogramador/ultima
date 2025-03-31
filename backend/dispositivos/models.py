@@ -134,7 +134,7 @@ class Posicion(models.Model):
     piso = models.CharField(max_length=50)
     sede = models.ForeignKey(Sede, on_delete=models.CASCADE, related_name="posiciones", null=True, blank=True)
     servicio = models.ForeignKey(Servicios, on_delete=models.SET_NULL, related_name="posiciones", null=True, blank=True)
-    dispositivos = models.ManyToManyField('Dispositivo', related_name='posiciones')
+    dispositivos = models.ManyToManyField('Dispositivo', related_name='posiciones', blank=True)
     mergedCells = models.JSONField(default=list)  # Corregido: JSONField en lugar de lista
 
     def _str_(self):
