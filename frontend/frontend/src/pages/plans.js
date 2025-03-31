@@ -575,105 +575,106 @@ function FloorPlan() {
 
   // Reemplazar la función importFromExcel completa with this versión mejorada
   const importFromExcel = async (e) => {
-    const file = e.target.files[0]
-    if (!file) return
-
-    setLoading(true)
-    showNotification("Procesando archivo Excel...", "success")
-
+    const file = e.target.files[0];
+    if (!file) return;
+  
+    setLoading(true);
+    showNotification("Procesando archivo Excel...", "success");
+  
     try {
       // 1. Verificar que tengamos dispositivos disponibles
       if (dispositivos.length === 0) {
         showNotification(
           "Error: No hay dispositivos disponibles en el sistema. Debe crear al menos un dispositivo antes de importar.",
-          "error",
-        )
-        setLoading(false)
-        return
+          "error"
+        );
+        setLoading(false);
+        return;
       }
-
+  
       // Obtener el primer dispositivo disponible para usar como valor por defecto
-      const defaultDevice = dispositivos[0].id
-      console.log("Dispositivo por defecto para importación:", defaultDevice)
-
+      const defaultDevice = dispositivos[0].id;
+      console.log("Dispositivo por defecto para importación:", defaultDevice);
+  
       // 2. Preguntar al usuario si desea eliminar las posiciones existentes
       const confirmDelete = window.confirm(
-        "¿Desea eliminar las posiciones existentes en este piso antes de importar? Seleccione 'Cancelar' para agregar las nuevas posiciones sin eliminar las existentes.",
-      )
-
+        "¿Desea eliminar las posiciones existentes en este piso antes de importar? Seleccione 'Cancelar' para agregar las nuevas posiciones sin eliminar las existentes."
+      );
+  
       // 3. Si el usuario confirma, eliminar las posiciones existentes
       if (confirmDelete) {
-        showNotification("Eliminando posiciones existentes...", "success")
-        const currentPositions = Object.values(positions).filter((p) => p.piso === selectedPiso)
-
+        showNotification("Eliminando posiciones existentes...", "success");
+        const currentPositions = Object.values(positions).filter(
+          (p) => p.piso === selectedPiso
+        );
+  
         for (const pos of currentPositions) {
           try {
-            await axios.delete(`${API_URL}api/posiciones/${pos.id}/`)
-            console.log(`Posición eliminada: ${pos.id}`)
+            await axios.delete(`${API_URL}api/posiciones/${pos.id}/`);
+            console.log(`Posición eliminada: ${pos.id}`);
           } catch (error) {
-            console.error(`Error al eliminar posición ${pos.id}:`, error)
+            console.error(`Error al eliminar posición ${pos.id}:`, error);
           }
         }
       }
-
+  
       // 4. Leer el archivo Excel
-      const reader = new FileReader()
-
+      const reader = new FileReader();
+  
       reader.onload = async (event) => {
         try {
-          const data = new Uint8Array(event.target.result)
+          const data = new Uint8Array(event.target.result);
           const workbook = XLSX.read(data, {
             type: "array",
             cellStyles: true,
             cellDates: true,
-          })
-
+          });
+  
           // 5. Obtener la primera hoja del libro
-          const sheetName = workbook.SheetNames[0]
-          const worksheet = workbook.Sheets[sheetName]
-
+          const sheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[sheetName];
+  
           // 6. Obtener el rango de celdas
-          const range = XLSX.utils.decode_range(worksheet["!ref"])
-          console.log("Rango de celdas:", range)
-
+          const range = XLSX.utils.decode_range(worksheet["!ref"]);
+          console.log("Rango de celdas:", range);
+  
           // 7. Obtener información de celdas combinadas
-          const mergedCellsInfo = worksheet["!merges"] || []
-          console.log("Celdas combinadas detectadas:", mergedCellsInfo.length)
-
+          const mergedCellsInfo = worksheet["!merges"] || [];
+          console.log("Celdas combinadas detectadas:", mergedCellsInfo.length);
+  
           // 8. Preparar variables para el seguimiento
-          const processedCells = {} // Para rastrear qué celdas ya se han procesado
-          const newPositions = {}
-          let savedCount = 0
-          let errorCount = 0
-
+          const processedCells = {}; // Para rastrear qué celdas ya se han procesado
+          const newPositions = {};
+          let savedCount = 0;
+          let errorCount = 0;
+  
           // 9. Procesar primero las celdas combinadas
           for (const mergeInfo of mergedCellsInfo) {
-            const startRow = mergeInfo.s.r
-            const startCol = mergeInfo.s.c
-            const endRow = mergeInfo.e.r
-            const endCol = mergeInfo.e.c
-
+            const startRow = mergeInfo.s.r;
+            const startCol = mergeInfo.s.c;
+            const endRow = mergeInfo.e.r;
+            const endCol = mergeInfo.e.c;
+  
             // Obtener la celda principal (esquina superior izquierda)
-            const mainCellAddress = XLSX.utils.encode_cell({ r: startRow, c: startCol })
-            const mainCell = worksheet[mainCellAddress]
-
-            // Extraer el valor y color de la celda - IMPORTANTE: No añadir texto a celdas vacías
-            const cellValue =
-              mainCell && mainCell.v !== undefined && mainCell.v !== null ? String(mainCell.v).trim() : ""
-            const colorInfo = mainCell ? extractColor(mainCell) : { color: "#FFFFFF", originalColor: "FFFFFF" }
-            const cellColor = cleanHexColor(colorInfo.color)
-
+            const mainCellAddress = XLSX.utils.encode_cell({ r: startRow, c: startCol });
+            const mainCell = worksheet[mainCellAddress];
+  
+            // Extraer el valor y color de la celda - IMPORTANTE: Considerar celdas vacías pero combinadas
+            const cellValue = mainCell && mainCell.v !== undefined && mainCell.v !== null ? String(mainCell.v).trim() : "";
+            const colorInfo = mainCell ? extractColor(mainCell) : { color: "#FFFFFF", originalColor: "FFFFFF" };
+            const cellColor = cleanHexColor(colorInfo.color);
+  
             // Crear lista de celdas combinadas
-            const mergedCells = []
+            const mergedCells = [];
             for (let r = startRow; r <= endRow; r++) {
               for (let c = startCol; c <= endCol; c++) {
-                const actualRow = r + 1
-                const colLetter = XLSX.utils.encode_col(c)
-                mergedCells.push({ row: actualRow, col: colLetter })
-                processedCells[`${actualRow}-${colLetter}`] = true
+                const actualRow = r + 1;
+                const colLetter = XLSX.utils.encode_col(c);
+                mergedCells.push({ row: actualRow, col: colLetter });
+                processedCells[`${actualRow}-${colLetter}`] = true;
               }
             }
-
+  
             // Crear objeto de posición
             const position = {
               nombre: cellValue,
@@ -700,76 +701,74 @@ function FloorPlan() {
                 bottomDouble: false,
                 leftDouble: false,
               },
-            }
-
+            };
+  
             // Intentar encontrar un servicio que coincida con el color
             if (servicios.length > 0) {
               const matchingService = servicios.find((s) => {
-                const serviceColor = cleanHexColor(s.color)
-                const positionColor = cleanHexColor(cellColor)
-                return serviceColor.toLowerCase() === positionColor.toLowerCase()
-              })
-
+                const serviceColor = cleanHexColor(s.color);
+                const positionColor = cleanHexColor(cellColor);
+                return serviceColor.toLowerCase() === positionColor.toLowerCase();
+              });
+  
               if (matchingService) {
-                position.servicio = matchingService.id
+                position.servicio = matchingService.id;
               }
             }
-
-            // Solo guardar si la celda tiene color o texto
-            if (cellColor !== "#FFFFFF" || cellValue !== "") {
-              try {
-                console.log("Guardando posición combinada:", position)
-                const response = await axios.post(`${API_URL}api/posiciones/`, position)
-                if (response.status === 201) {
-                  newPositions[response.data.id] = response.data
-                  savedCount++
-                }
-              } catch (error) {
-                console.error("Error al guardar posición combinada:", error)
-                if (error.response?.data) {
-                  console.error("Detalles del error:", JSON.stringify(error.response.data))
-                }
-                errorCount++
+  
+            // Guardar TODAS las celdas combinadas, incluso si están vacías
+            try {
+              console.log("Guardando posición combinada:", position);
+              const response = await axios.post(`${API_URL}api/posiciones/`, position);
+              if (response.status === 201) {
+                newPositions[response.data.id] = response.data;
+                savedCount++;
               }
+            } catch (error) {
+              console.error("Error al guardar posición combinada:", error);
+              if (error.response?.data) {
+                console.error("Detalles del error:", JSON.stringify(error.response.data));
+              }
+              errorCount++;
             }
           }
-
+  
           // 10. Procesar celdas individuales
           for (let row = range.s.r; row <= range.e.r; row++) {
             for (let col = range.s.c; col <= range.e.c; col++) {
-              const actualRow = row + 1
-              const colLetter = XLSX.utils.encode_col(col)
-
+              const actualRow = row + 1;
+              const colLetter = XLSX.utils.encode_col(col);
+  
               // Omitir celdas que ya están en áreas combinadas
               if (processedCells[`${actualRow}-${colLetter}`]) {
-                continue
+                continue;
               }
-
-              // Omitir celdas que ya están ocupadas en las posiciones existentes
+  
+              // Omitir celdas que ya están ocupadas en las posiciones existentes (si no confirmó eliminar)
               if (
                 !confirmDelete &&
                 Object.values(positions).some(
                   (pos) =>
                     pos.piso === selectedPiso &&
-                    pos.mergedCells.some((c) => c.row === actualRow && c.col === colLetter),
+                    pos.mergedCells.some((c) => c.row === actualRow && c.col === colLetter)
                 )
               ) {
-                continue
+                continue;
               }
-
-              const cellAddress = XLSX.utils.encode_cell({ r: row, c: col })
-              const cell = worksheet[cellAddress]
-
-              // Extraer el valor y color de la celda - IMPORTANTE: No añadir texto a celdas vacías
-              const cellValue = cell && cell.v !== undefined && cell.v !== null ? String(cell.v).trim() : ""
-              const colorInfo = cell ? extractColor(cell) : { color: "#FFFFFF", originalColor: "FFFFFF" }
-              const cellColor = cleanHexColor(colorInfo.color)
-
-              // Solo procesar celdas con color o texto
+  
+              const cellAddress = XLSX.utils.encode_cell({ r: row, c: col });
+              const cell = worksheet[cellAddress];
+  
+              // Extraer el valor y color de la celda
+              const cellValue = cell && cell.v !== undefined && cell.v !== null ? String(cell.v).trim() : "";
+              const colorInfo = cell ? extractColor(cell) : { color: "#FFFFFF", originalColor: "FFFFFF" };
+              const cellColor = cleanHexColor(colorInfo.color);
+  
+              // Omitir celdas completamente vacías (sin color ni texto)
               if (cellColor === "#FFFFFF" && cellValue === "") {
-                continue // Omitir celdas completamente vacías (sin color ni texto)
+                continue;
               }
-
+  
               // Crear objeto de posición
               const position = {
                 nombre: cellValue,
@@ -796,75 +795,80 @@ function FloorPlan() {
                   bottomDouble: false,
                   leftDouble: false,
                 },
-              }
-
+              };
+  
               // Intentar encontrar un servicio que coincida con el color
               if (servicios.length > 0) {
                 const matchingService = servicios.find((s) => {
-                  const serviceColor = cleanHexColor(s.color)
-                  const positionColor = cleanHexColor(cellColor)
-                  return serviceColor.toLowerCase() === positionColor.toLowerCase()
-                })
-
+                  const serviceColor = cleanHexColor(s.color);
+                  const positionColor = cleanHexColor(cellColor);
+                  return serviceColor.toLowerCase() === positionColor.toLowerCase();
+                });
+  
                 if (matchingService) {
-                  position.servicio = matchingService.id
+                  position.servicio = matchingService.id;
                 }
               }
-
+  
               // Guardar la posición
               try {
-                const response = await axios.post(`${API_URL}api/posiciones/`, position)
+                const response = await axios.post(`${API_URL}api/posiciones/`, position);
                 if (response.status === 201) {
-                  newPositions[response.data.id] = response.data
-                  savedCount++
-
+                  newPositions[response.data.id] = response.data;
+                  savedCount++;
+  
                   // Mostrar progreso cada 10 posiciones
                   if (savedCount % 10 === 0) {
-                    showNotification(`Importando... ${savedCount} posiciones guardadas`, "success")
+                    showNotification(`Importando... ${savedCount} posiciones guardadas`, "success");
                   }
                 }
               } catch (error) {
-                console.error("Error al guardar posición individual:", error)
+                console.error("Error al guardar posición individual:", error);
                 if (error.response?.data) {
-                  console.error("Detalles del error:", JSON.stringify(error.response.data))
+                  console.error("Detalles del error:", JSON.stringify(error.response.data));
                 }
-                errorCount++
+                errorCount++;
               }
             }
           }
-
+  
           // 11. Actualizar el estado con las nuevas posiciones
           setPositions((prev) => ({
             ...prev,
             ...newPositions,
-          }))
-
+          }));
+  
           // 12. Mostrar resumen final
-          const resultMessage = `Importación completada: ${savedCount} posiciones guardadas${errorCount > 0 ? `, ${errorCount} errores` : ""}`
-          showNotification(resultMessage, errorCount > 0 ? "error" : "success")
-
+          const resultMessage = `Importación completada: ${savedCount} posiciones guardadas${
+            errorCount > 0 ? `, ${errorCount} errores` : ""
+          }`;
+          showNotification(resultMessage, errorCount > 0 ? "error" : "success");
+  
           // 13. Recargar las posiciones para asegurar que se muestren correctamente
-          await fetchPositions()
+          await fetchPositions();
         } catch (error) {
-          console.error("Error al procesar el archivo Excel:", error)
-          showNotification("Error al procesar el archivo Excel: " + (error.message || "Error desconocido"), "error")
+          console.error("Error al procesar el archivo Excel:", error);
+          showNotification(
+            "Error al procesar el archivo Excel: " + (error.message || "Error desconocido"),
+            "error"
+          );
         } finally {
-          setLoading(false)
+          setLoading(false);
         }
-      }
-
+      };
+  
       reader.onerror = () => {
-        setLoading(false)
-        showNotification("Error al leer el archivo", "error")
-      }
-
-      reader.readAsArrayBuffer(file)
+        setLoading(false);
+        showNotification("Error al leer el archivo", "error");
+      };
+  
+      reader.readAsArrayBuffer(file);
     } catch (error) {
-      console.error("Error en la importación:", error)
-      showNotification("Error en la importación: " + (error.message || "Error desconocido"), "error")
-      setLoading(false)
+      console.error("Error en la importación:", error);
+      showNotification("Error en la importación: " + (error.message || "Error desconocido"), "error");
+      setLoading(false);
     }
-  }
+  };
 
   // Reemplazar la función exportToExcel with this nueva implementación
   const exportToExcel = () => {
@@ -1958,4 +1962,3 @@ function FloorPlan() {
 }
 
 export default FloorPlan
-
