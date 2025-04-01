@@ -31,7 +31,7 @@ const PISOS = [
 
 // Ya no necesitamos la lista de colores predefinidos, ya que los colores vendrán del servicio
 // Mantenemos solo el color por defecto para cuando no hay servicio asignado
-const COLOR_DEFAULT = "#B0BEC5"
+const COLOR_DEFAULT = "#FFFFFF"
 
 const ESTADOS = [
   { value: "disponible", label: "Disponible", color: "green" },
