@@ -13,9 +13,11 @@ import {
   FaUndo,
   FaCheck,
   FaExclamationTriangle,
+  FaList,
+  FaTable,
 } from "react-icons/fa"
 import * as XLSX from "xlsx"
-import "../styles/Plans.css"
+import "../styles/Plans.css" // Updated import path
 
 const API_URL = "http://127.0.0.1:8000/"
 
@@ -219,12 +221,12 @@ const extractColor = (cell) => {
           2: "E7E6E6",
           3: "44546A",
           4: "4472C4",
-          5: "ED7D31",
-          6: "A5A5A5",
-          7: "FFC000",
-          8: "5B9BD5",
-          9: "70AD47",
-          10: "FF0000",
+          5: "ED7D31", // Naranja
+          6: "A5A5A5", // Gris
+          7: "FFC000", // Amarillo
+          8: "5B9BD5", // Azul claro
+          9: "70AD47", // Verde
+          10: "FF0000", // Rojo
         }
         color = themeColors[cell.s.fill.bgColor.theme] || "FFFFFF"
       } else if (cell.s.fill.bgColor.indexed !== undefined) {
@@ -249,12 +251,12 @@ const extractColor = (cell) => {
           2: "E7E6E6",
           3: "44546A",
           4: "4472C4",
-          5: "ED7D31",
-          6: "A5A5A5",
-          7: "FFC000",
-          8: "5B9BD5",
-          9: "70AD47",
-          10: "FF0000",
+          5: "ED7D31", // Naranja
+          6: "A5A5A5", // Gris
+          7: "FFC000", // Amarillo
+          8: "5B9BD5", // Azul claro
+          9: "70AD47", // Verde
+          10: "FF0000", // Rojo
         }
         color = themeColors[cell.s.fill.color.theme] || "FFFFFF"
       } else if (cell.s.fill.color && cell.s.fill.color.indexed !== undefined) {
@@ -419,6 +421,10 @@ function FloorPlan() {
   const tableContainerRef = useRef(null)
   const [defaultDeviceId, setDefaultDeviceId] = useState(null)
 
+  // Nuevo estado para controlar la vista (tabla o plano)
+  const [viewMode, setViewMode] = useState("plano") // "plano" o "tabla"
+  const [showAllPositions, setShowAllPositions] = useState(false)
+
   // Estados para los selectores
   const [servicios, setServicios] = useState([])
   const [sedes, setSedes] = useState([])
@@ -454,7 +460,7 @@ function FloorPlan() {
   useEffect(() => {
     fetchSelectorData()
     fetchPositions()
-  }, [selectedPiso]) // Solo depende de selectedPiso
+  }, []) // Ya no depende de selectedPiso para cargar todas las posiciones
 
   // Función para obtener el color del servicio por ID
   const getServiceColor = (serviceId) => {
@@ -472,6 +478,20 @@ function FloorPlan() {
     return service ? service.nombre : ""
   }
 
+  // Función para obtener el nombre de la sede por ID
+  const getSedeName = (sedeId) => {
+    if (!sedeId) return ""
+
+    const sede = sedes.find((s) => s.id === Number(sedeId) || s.id === sedeId)
+    return sede ? sede.nombre : ""
+  }
+
+  // Función para obtener el nombre del piso por valor
+  const getPisoName = (pisoValue) => {
+    const piso = PISOS.find((p) => p.value === pisoValue)
+    return piso ? piso.label : pisoValue
+  }
+
   // Reemplazar la función fetchPositions para manejar mejor los datos recibidos
   const fetchPositions = async () => {
     try {
@@ -479,23 +499,33 @@ function FloorPlan() {
       const url = `${API_URL}api/posiciones/`
       console.log("Obteniendo posiciones desde:", url)
 
-      const response = await axios.get(url)
-      console.log("Respuesta completa:", response)
+      let allPositions = []
+      let nextUrl = url
 
-      let positionsData = []
-      if (response.data && Array.isArray(response.data)) {
-        positionsData = response.data
-      } else if (response.data && Array.isArray(response.data.results)) {
-        positionsData = response.data.results
-      } else {
-        console.warn("Formato de respuesta inesperado:", response.data)
-        positionsData = []
+      while (nextUrl) {
+        const response = await axios.get(nextUrl)
+        console.log("Respuesta completa:", response)
+
+        let positionsData = []
+        if (response.data && Array.isArray(response.data)) {
+          positionsData = response.data
+        } else if (response.data && Array.isArray(response.data.results)) {
+          positionsData = response.data.results
+          nextUrl = response.data.next // Obtener la URL de la siguiente página
+        } else {
+          console.warn("Formato de respuesta inesperado:", response.data)
+          positionsData = []
+          nextUrl = null // Detener la paginación si el formato es incorrecto
+        }
+
+        console.log("Datos de posiciones recibidos:", positionsData.length)
+        allPositions = allPositions.concat(positionsData)
       }
 
-      console.log("Datos de posiciones recibidos:", positionsData.length)
+      console.log("Total de posiciones recibidas:", allPositions.length)
 
       // Convertir el array a un objeto con id como clave
-      const positionsObj = positionsData.reduce((acc, pos) => {
+      const positionsObj = allPositions.reduce((acc, pos) => {
         try {
           // Normalizar el objeto de posición para evitar errores
           const normalizedPos = {
@@ -575,106 +605,105 @@ function FloorPlan() {
 
   // Reemplazar la función importFromExcel completa with this versión mejorada
   const importFromExcel = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-  
-    setLoading(true);
-    showNotification("Procesando archivo Excel...", "success");
-  
+    const file = e.target.files[0]
+    if (!file) return
+
+    setLoading(true)
+    showNotification("Procesando archivo Excel...", "success")
+
     try {
       // 1. Verificar que tengamos dispositivos disponibles
       if (dispositivos.length === 0) {
         showNotification(
           "Error: No hay dispositivos disponibles en el sistema. Debe crear al menos un dispositivo antes de importar.",
-          "error"
-        );
-        setLoading(false);
-        return;
+          "error",
+        )
+        setLoading(false)
+        return
       }
-  
+
       // Obtener el primer dispositivo disponible para usar como valor por defecto
-      const defaultDevice = dispositivos[0].id;
-      console.log("Dispositivo por defecto para importación:", defaultDevice);
-  
+      const defaultDevice = dispositivos[0].id
+      console.log("Dispositivo por defecto para importación:", defaultDevice)
+
       // 2. Preguntar al usuario si desea eliminar las posiciones existentes
       const confirmDelete = window.confirm(
-        "¿Desea eliminar las posiciones existentes en este piso antes de importar? Seleccione 'Cancelar' para agregar las nuevas posiciones sin eliminar las existentes."
-      );
-  
+        "¿Desea eliminar las posiciones existentes en este piso antes de importar? Seleccione 'Cancelar' para agregar las nuevas posiciones sin eliminar las existentes.",
+      )
+
       // 3. Si el usuario confirma, eliminar las posiciones existentes
       if (confirmDelete) {
-        showNotification("Eliminando posiciones existentes...", "success");
-        const currentPositions = Object.values(positions).filter(
-          (p) => p.piso === selectedPiso
-        );
-  
+        showNotification("Eliminando posiciones existentes...", "success")
+        const currentPositions = Object.values(positions).filter((p) => p.piso === selectedPiso)
+
         for (const pos of currentPositions) {
           try {
-            await axios.delete(`${API_URL}api/posiciones/${pos.id}/`);
-            console.log(`Posición eliminada: ${pos.id}`);
+            await axios.delete(`${API_URL}api/posiciones/${pos.id}/`)
+            console.log(`Posición eliminada: ${pos.id}`)
           } catch (error) {
-            console.error(`Error al eliminar posición ${pos.id}:`, error);
+            console.error(`Error al eliminar posición ${pos.id}:`, error)
           }
         }
       }
-  
+
       // 4. Leer el archivo Excel
-      const reader = new FileReader();
-  
+      const reader = new FileReader()
+
       reader.onload = async (event) => {
         try {
-          const data = new Uint8Array(event.target.result);
+          const data = new Uint8Array(event.target.result)
           const workbook = XLSX.read(data, {
             type: "array",
             cellStyles: true,
             cellDates: true,
-          });
-  
+          })
+
           // 5. Obtener la primera hoja del libro
-          const sheetName = workbook.SheetNames[0];
-          const worksheet = workbook.Sheets[sheetName];
-  
+          const sheetName = workbook.SheetNames[0]
+          const worksheet = workbook.Sheets[sheetName]
+
           // 6. Obtener el rango de celdas
-          const range = XLSX.utils.decode_range(worksheet["!ref"]);
-          console.log("Rango de celdas:", range);
-  
+          const range = XLSX.utils.decode_range(worksheet["!ref"])
+          console.log("Rango de celdas:", range)
+
           // 7. Obtener información de celdas combinadas
-          const mergedCellsInfo = worksheet["!merges"] || [];
-          console.log("Celdas combinadas detectadas:", mergedCellsInfo.length);
-  
+          const mergedCellsInfo = worksheet["!merges"] || []
+          console.log("Celdas combinadas detectadas:", mergedCellsInfo.length)
+
           // 8. Preparar variables para el seguimiento
-          const processedCells = {}; // Para rastrear qué celdas ya se han procesado
-          const newPositions = {};
-          let savedCount = 0;
-          let errorCount = 0;
-  
+          const processedCells = {} // Para rastrear qué celdas ya se han procesado
+          const newPositions = {}
+          let savedCount = 0
+          let errorCount = 0
+
           // 9. Procesar primero las celdas combinadas
           for (const mergeInfo of mergedCellsInfo) {
-            const startRow = mergeInfo.s.r;
-            const startCol = mergeInfo.s.c;
-            const endRow = mergeInfo.e.r;
-            const endCol = mergeInfo.e.c;
-  
+            const startRow = mergeInfo.s.r
+            const startCol = mergeInfo.s.c
+            const endRow = mergeInfo.e.r
+            const endCol = mergeInfo.e.c
+
             // Obtener la celda principal (esquina superior izquierda)
-            const mainCellAddress = XLSX.utils.encode_cell({ r: startRow, c: startCol });
-            const mainCell = worksheet[mainCellAddress];
-  
+            const mainCellAddress = XLSX.utils.encode_cell({ r: startRow, c: startCol })
+            const mainCell = worksheet[mainCellAddress]
+
             // Extraer el valor y color de la celda - IMPORTANTE: Considerar celdas vacías pero combinadas
-            const cellValue = mainCell && mainCell.v !== undefined && mainCell.v !== null ? String(mainCell.v).trim() : "";
-            const colorInfo = mainCell ? extractColor(mainCell) : { color: "#FFFFFF", originalColor: "FFFFFF" };
-            const cellColor = cleanHexColor(colorInfo.color);
-  
+            const cellValue =
+              mainCell && mainCell.v !== undefined && mainCell.v !== null ? String(mainCell.v).trim() : ""
+            const colorInfo = mainCell ? extractColor(mainCell) : { color: "#FFFFFF", originalColor: "FFFFFF" }
+            const cellColor = cleanHexColor(colorInfo.color)
+
             // Crear lista de celdas combinadas
-            const mergedCells = [];
+            const mergedCells = []
             for (let r = startRow; r <= endRow; r++) {
               for (let c = startCol; c <= endCol; c++) {
-                const actualRow = r + 1;
-                const colLetter = XLSX.utils.encode_col(c);
-                mergedCells.push({ row: actualRow, col: colLetter });
-                processedCells[`${actualRow}-${colLetter}`] = true;
+                const actualRow = r + 1
+                const colLetter = XLSX.utils.encode_col(c)
+                mergedCells.push({ row: actualRow, col: colLetter })
+                processedCells[`${actualRow}-${colLetter}`] = true
               }
             }
-  
+
             // Crear objeto de posición
             const position = {
               nombre: cellValue,
@@ -701,74 +730,74 @@ function FloorPlan() {
                 bottomDouble: false,
                 leftDouble: false,
               },
-            };
-  
+            }
+
             // Intentar encontrar un servicio que coincida con el color
             if (servicios.length > 0) {
               const matchingService = servicios.find((s) => {
-                const serviceColor = cleanHexColor(s.color);
-                const positionColor = cleanHexColor(cellColor);
-                return serviceColor.toLowerCase() === positionColor.toLowerCase();
-              });
-  
+                const serviceColor = cleanHexColor(s.color)
+                const positionColor = cleanHexColor(cellColor)
+                return serviceColor.toLowerCase() === positionColor.toLowerCase()
+              })
+
               if (matchingService) {
-                position.servicio = matchingService.id;
+                position.servicio = matchingService.id
               }
             }
-  
+
             // Guardar TODAS las celdas combinadas, incluso si están vacías
             try {
-              console.log("Guardando posición combinada:", position);
-              const response = await axios.post(`${API_URL}api/posiciones/`, position);
+              console.log("Guardando posición combinada:", position)
+              const response = await axios.post(`${API_URL}api/posiciones/`, position)
               if (response.status === 201) {
-                newPositions[response.data.id] = response.data;
-                savedCount++;
+                newPositions[response.data.id] = response.data
+                savedCount++
               }
             } catch (error) {
-              console.error("Error al guardar posición combinada:", error);
+              console.error("Error al guardar posición combinada:", error)
               if (error.response?.data) {
-                console.error("Detalles del error:", JSON.stringify(error.response.data));
+                console.error("Detalles del error:", JSON.stringify(error.response.data))
               }
-              errorCount++;
+              errorCount++
             }
           }
-  
+
           // 10. Procesar celdas individuales
           for (let row = range.s.r; row <= range.e.r; row++) {
             for (let col = range.s.c; col <= range.e.c; col++) {
-              const actualRow = row + 1;
-              const colLetter = XLSX.utils.encode_col(col);
-  
+              const actualRow = row + 1
+              const colLetter = XLSX.utils.encode_col(col)
+
               // Omitir celdas que ya están en áreas combinadas
               if (processedCells[`${actualRow}-${colLetter}`]) {
-                continue;
+                continue
               }
-  
+
               // Omitir celdas que ya están ocupadas en las posiciones existentes (si no confirmó eliminar)
               if (
                 !confirmDelete &&
                 Object.values(positions).some(
                   (pos) =>
                     pos.piso === selectedPiso &&
-                    pos.mergedCells.some((c) => c.row === actualRow && c.col === colLetter)
+                    pos.mergedCells.some((c) => c.row === actualRow && c.col === colLetter),
                 )
               ) {
-                continue;
+                continue
               }
-  
-              const cellAddress = XLSX.utils.encode_cell({ r: row, c: col });
-              const cell = worksheet[cellAddress];
-  
+
+              const cellAddress = XLSX.utils.encode_cell({ r: row, c: col })
+              const cell = worksheet[cellAddress]
+
               // Extraer el valor y color de la celda
-              const cellValue = cell && cell.v !== undefined && cell.v !== null ? String(cell.v).trim() : "";
-              const colorInfo = cell ? extractColor(cell) : { color: "#FFFFFF", originalColor: "FFFFFF" };
-              const cellColor = cleanHexColor(colorInfo.color);
-  
+              const cellValue = cell && cell.v !== undefined && cell.v !== null ? String(cell.v).trim() : ""
+              const colorInfo = cell ? extractColor(cell) : { color: "#FFFFFF", originalColor: "FFFFFF" }
+              const cellColor = cleanHexColor(colorInfo.color)
+
               // Omitir celdas completamente vacías (sin color ni texto)
               if (cellColor === "#FFFFFF" && cellValue === "") {
-                continue;
+                continue
               }
-  
+
               // Crear objeto de posición
               const position = {
                 nombre: cellValue,
@@ -795,80 +824,77 @@ function FloorPlan() {
                   bottomDouble: false,
                   leftDouble: false,
                 },
-              };
-  
+              }
+
               // Intentar encontrar un servicio que coincida con el color
               if (servicios.length > 0) {
                 const matchingService = servicios.find((s) => {
-                  const serviceColor = cleanHexColor(s.color);
-                  const positionColor = cleanHexColor(cellColor);
-                  return serviceColor.toLowerCase() === positionColor.toLowerCase();
-                });
-  
+                  const serviceColor = cleanHexColor(s.color)
+                  const positionColor = cleanHexColor(cellColor)
+                  return serviceColor.toLowerCase() === positionColor.toLowerCase()
+                })
+
                 if (matchingService) {
-                  position.servicio = matchingService.id;
+                  position.servicio = matchingService.id
                 }
               }
-  
+
               // Guardar la posición
               try {
-                const response = await axios.post(`${API_URL}api/posiciones/`, position);
+                const response = await axios.post(`${API_URL}api/posiciones/`, position)
                 if (response.status === 201) {
-                  newPositions[response.data.id] = response.data;
-                  savedCount++;
-  
+                  newPositions[response.data.id] = response.data
+                  savedCount++
+
                   // Mostrar progreso cada 10 posiciones
                   if (savedCount % 10 === 0) {
-                    showNotification(`Importando... ${savedCount} posiciones guardadas`, "success");
+                    showNotification(`Importando... ${savedCount} posiciones guardadas`, "success")
                   }
                 }
               } catch (error) {
-                console.error("Error al guardar posición individual:", error);
+                console.error("Error al guardar posición individual:", error)
                 if (error.response?.data) {
-                  console.error("Detalles del error:", JSON.stringify(error.response.data));
+                  console.error("Detalles del error:", JSON.stringify(error.response.data))
                 }
-                errorCount++;
+                errorCount++
               }
             }
           }
-  
+
           // 11. Actualizar el estado con las nuevas posiciones
           setPositions((prev) => ({
             ...prev,
             ...newPositions,
-          }));
-  
+          }))
+
           // 12. Mostrar resumen final
           const resultMessage = `Importación completada: ${savedCount} posiciones guardadas${
             errorCount > 0 ? `, ${errorCount} errores` : ""
-          }`;
-          showNotification(resultMessage, errorCount > 0 ? "error" : "success");
-  
+          }`
+          showNotification(resultMessage, errorCount > 0 ? "error" : "success")
+
           // 13. Recargar las posiciones para asegurar que se muestren correctamente
-          await fetchPositions();
+          await fetchPositions()
         } catch (error) {
-          console.error("Error al procesar el archivo Excel:", error);
-          showNotification(
-            "Error al procesar el archivo Excel: " + (error.message || "Error desconocido"),
-            "error"
-          );
+          console.error("Error al procesar el archivo Excel:", error)
+          showNotification("Error al procesar el archivo Excel: " + (error.message || "Error desconocido"), "error")
         } finally {
-          setLoading(false);
+          setLoading(false)
         }
-      };
-  
+      }
+
       reader.onerror = () => {
-        setLoading(false);
-        showNotification("Error al leer el archivo", "error");
-      };
-  
-      reader.readAsArrayBuffer(file);
+        setLoading(false)
+        showNotification("Error al leer el archivo", "error")
+      }
+
+      reader.readAsArrayBuffer(file)
     } catch (error) {
-      console.error("Error en la importación:", error);
-      showNotification("Error en la importación: " + (error.message || "Error desconocido"), "error");
-      setLoading(false);
+      console.error("Error en la importación:", error)
+      showNotification("Error en la importación: " + (error.message || "Error desconocido"), "error")
+      setLoading(false)
     }
-  };
+  }
 
   // Reemplazar la función exportToExcel with this nueva implementación
   const exportToExcel = () => {
@@ -876,11 +902,13 @@ function FloorPlan() {
       setLoading(true)
       showNotification("Preparando exportación...", "success")
 
-      // Filtrar las posiciones del piso seleccionado
-      const positionsArray = Object.values(positions).filter((pos) => pos.piso === selectedPiso)
+      // Filtrar las posiciones según el modo de visualización
+      const positionsArray = showAllPositions
+        ? Object.values(positions)
+        : Object.values(positions).filter((pos) => pos.piso === selectedPiso)
 
       if (positionsArray.length === 0) {
-        showNotification("No hay posiciones para exportar en este piso", "error")
+        showNotification("No hay posiciones para exportar", "error")
         setLoading(false)
         return
       }
@@ -975,7 +1003,9 @@ function FloorPlan() {
 
       // Generar nombre de archivo con fecha y hora
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-").substring(0, 19)
-      const fileName = `Posiciones_${selectedPiso}_${timestamp}.xlsx`
+      const fileName = showAllPositions
+        ? `Todas_Posiciones_${timestamp}.xlsx`
+        : `Posiciones_${selectedPiso}_${timestamp}.xlsx`
 
       // Convertir el libro a un array buffer
       const wbout = XLSX.write(workbook, { bookType: "xlsx", type: "array" })
@@ -1294,8 +1324,25 @@ function FloorPlan() {
     setIsModalOpen(true)
   }
 
-  const filteredPositions = Object.values(positions).filter(
-    (pos) =>
+  // Filtrar posiciones según el modo de visualización
+  const filteredPositions = Object.values(positions).filter((pos) => {
+    // Si estamos mostrando todas las posiciones, solo aplicamos el filtro de búsqueda
+    if (showAllPositions) {
+      return (
+        searchTerm === "" ||
+        (pos.nombre && pos.nombre.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (pos.servicio &&
+          typeof pos.servicio === "object" &&
+          pos.servicio.nombre &&
+          pos.servicio.nombre.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (pos.servicio &&
+          typeof pos.servicio === "string" &&
+          getServiceName(pos.servicio).toLowerCase().includes(searchTerm.toLowerCase()))
+      )
+    }
+
+    // Si estamos mostrando solo un piso, aplicamos ambos filtros
+    return (
       pos.piso === selectedPiso &&
       (searchTerm === "" ||
         (pos.nombre && pos.nombre.toLowerCase().includes(searchTerm.toLowerCase())) ||
@@ -1305,8 +1352,9 @@ function FloorPlan() {
           pos.servicio.nombre.toLowerCase().includes(searchTerm.toLowerCase())) ||
         (pos.servicio &&
           typeof pos.servicio === "string" &&
-          getServiceName(pos.servicio).toLowerCase().includes(searchTerm.toLowerCase()))),
-  )
+          getServiceName(pos.servicio).toLowerCase().includes(searchTerm.toLowerCase())))
+    )
+  })
 
   // Reemplazar la función handleEditPosition para manejar mejor los datos
   const handleEditPosition = (position) => {
@@ -1405,7 +1453,7 @@ function FloorPlan() {
 
     const hasDoubleBorder = Object.entries(newPosition.bordeDetalle)
       .filter(([key]) => key.includes("Double"))
-      .some(([key, value]) => (key !== borderKey ? value : updates[borderKey]))
+      .some((key, value) => (key !== borderKey ? value : updates[borderKey]))
 
     setNewPosition({
       ...newPosition,
@@ -1421,6 +1469,7 @@ function FloorPlan() {
     })
   }
 
+  // Modificar la función renderTableCell para asegurar que todas las celdas se muestren correctamente
   const renderTableCell = (position, row, col, isSelected, isMainCell, colSpan, rowSpan) => {
     // Determinar el color de fondo basado en el servicio
     let backgroundColor
@@ -1437,6 +1486,9 @@ function FloorPlan() {
 
     const textColor = position?.colorFuente || position?.fontColor || getContrastColor(backgroundColor)
 
+    // Añadir un borde más visible para todas las celdas que tienen posición
+    const cellBorder = position ? "1px solid #000" : "1px solid var(--border)"
+
     return (
       <td
         key={`${row}-${col}`}
@@ -1452,27 +1504,29 @@ function FloorPlan() {
             ? "4px double black"
             : position?.bordeDetalle?.top
               ? "2px solid black"
-              : "1px solid var(--border)",
+              : cellBorder,
           borderBottom: position?.bordeDetalle?.bottomDouble
             ? "4px double black"
             : position?.bordeDetalle?.bottom
               ? "2px solid black"
-              : "1px solid var(--border)",
+              : cellBorder,
           borderLeft: position?.bordeDetalle?.leftDouble
             ? "4px double black"
             : position?.bordeDetalle?.left
               ? "2px solid black"
-              : "1px solid var(--border)",
+              : cellBorder,
           borderRight: position?.bordeDetalle?.rightDouble
             ? "4px double black"
             : position?.bordeDetalle?.right
               ? "2px solid black"
-              : "1px solid var(--border)",
+              : cellBorder,
           position: "relative",
           fontWeight: position?.fontWeight || "normal",
           fontSize: "0.8rem",
+          // Añadir un indicador visual para todas las posiciones, incluso las vacías
+          outline: position ? "1px solid rgba(0, 0, 0, 0.3)" : "none",
         }}
-        className={`table-cell ${isSelected ? "selected" : ""} ${isMainCell ? "main-cell" : ""}`}
+        className={`table-cell ${isSelected ? "selected" : ""} ${isMainCell ? "main-cell" : ""} ${position ? "has-position" : ""}`}
       >
         {position?.nombre || ""}
         {position && (
@@ -1487,6 +1541,9 @@ function FloorPlan() {
                     : position.estado === "reservado"
                       ? "orange"
                       : "gray",
+              // Hacer el indicador más visible
+              width: "12px",
+              height: "12px",
             }}
           />
         )}
@@ -1494,9 +1551,77 @@ function FloorPlan() {
     )
   }
 
+  // Renderizar la tabla de todas las posiciones
+  const renderAllPositionsTable = () => {
+    return (
+      <div className="all-positions-table">
+        <table className="table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Nombre</th>
+              <th>Piso</th>
+              <th>Fila</th>
+              <th>Columna</th>
+              <th>Estado</th>
+              <th>Servicio</th>
+              <th>Sede</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredPositions.map((position) => (
+              <tr key={position.id}>
+                <td>{position.id}</td>
+                <td>{position.nombre}</td>
+                <td>{getPisoName(position.piso)}</td>
+                <td>{position.fila}</td>
+                <td>{position.columna}</td>
+                <td>
+                  <span
+                    style={{
+                      display: "inline-block",
+                      width: "12px",
+                      height: "12px",
+                      borderRadius: "50%",
+                      backgroundColor:
+                        position.estado === "disponible"
+                          ? "green"
+                          : position.estado === "ocupado"
+                            ? "red"
+                            : position.estado === "reservado"
+                              ? "orange"
+                              : "gray",
+                      marginRight: "5px",
+                    }}
+                  ></span>
+                  {ESTADOS.find((e) => e.value === position.estado)?.label || position.estado}
+                </td>
+                <td>
+                  {typeof position.servicio === "object"
+                    ? position.servicio?.nombre
+                    : getServiceName(position.servicio)}
+                </td>
+                <td>{typeof position.sede === "object" ? position.sede?.nombre : getSedeName(position.sede)}</td>
+                <td>
+                  <button
+                    className="action-button"
+                    style={{ padding: "4px 8px", fontSize: "0.8rem" }}
+                    onClick={() => handleEditPosition(position)}
+                  >
+                    Editar
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )
+  }
+
   return (
     <div className="dashboard-container">
-      <h1>Sistema de Gestión de Planos de Piso</h1>
 
       <div className="controls-container">
         <div className="tabs">
@@ -1523,16 +1648,16 @@ function FloorPlan() {
             />
           </div>
 
-          <button className="action-button" onClick={handleAddNewPosition}>
+          <button className="action-buttonn" onClick={handleAddNewPosition}>
             <FaPlus /> Nueva Posición
           </button>
 
-          <button className="action-button" onClick={exportToExcel}>
+          <button className="action-buttonn" onClick={exportToExcel}>
             <FaUpload /> Exportar
           </button>
 
           <div className="import-container">
-            <button className="action-button" onClick={() => document.getElementById("import-excel").click()}>
+            <button className="action-buttonn" onClick={() => document.getElementById("import-excel").click()}>
               <FaDownload /> Importar
             </button>
             <input
@@ -1543,422 +1668,468 @@ function FloorPlan() {
               onChange={importFromExcel}
             />
           </div>
+
+          {/* Botones para cambiar el modo de visualización */}
+          <div className="action-buttonn" style={{ marginLeft: "10px" }}>
+            <button
+              className={`action-buttonn ${viewMode === "plano" ? "active" : ""}`}
+              onClick={() => setViewMode("plano")}
+              title="Ver plano"
+            >
+              <FaTable /> Plano
+            </button>
+            <button
+              className={`action-buttonn ${viewMode === "tabla" ? "active" : ""}`}
+              onClick={() => setViewMode("tabla")}
+              title="Ver tabla"
+            >
+              <FaList /> Tabla
+            </button>
+
+            {/* Checkbox para mostrar todas las posiciones */}
+            <label style={{ display: "flex", alignItems: "center", marginLeft: "10px" }}>
+              <input
+                type="checkbox"
+                checked={showAllPositions}
+                onChange={() => setShowAllPositions(!showAllPositions)}
+                style={{ marginRight: "5px" }}
+              />
+              Mostrar todas las posiciones
+            </label>
+          </div>
         </div>
       </div>
 
-      <div className="zoom-controls">
-        <button className="zoom-button" onClick={handleZoomIn}>
-          <FaSearchPlus />
-        </button>
-        <button className="zoom-button" onClick={handleZoomOut}>
-          <FaSearchMinus />
-        </button>
-        <button className="zoom-button" onClick={handleResetZoom}>
-          <FaUndo />
-        </button>
-        <span className="zoom-level">{Math.round(zoomLevel * 100)}%</span>
+      {viewMode === "plano" && (
+        <>
+          <div className="zoom-controls">
+            <button className="zoom-button" onClick={handleZoomIn}>
+              <FaSearchPlus />
+            </button>
+            <button className="zoom-button" onClick={handleZoomOut}>
+              <FaSearchMinus />
+            </button>
+            <button className="zoom-button" onClick={handleResetZoom}>
+              <FaUndo />
+            </button>
+            <span className="zoom-level">{Math.round(zoomLevel * 100)}%</span>
 
-        <div className="divider"></div>
+            <div className="divider"></div>
 
-        <button className="control-button" onClick={() => setRows(rows + 1)}>
-          <FaPlus className="mr-2" /> Agregar Fila
-        </button>
-        <button className="control-button" onClick={() => setColumns([...columns, getNextColumn(columns)])}>
-          <FaPlus className="mr-2" /> Agregar Columna
-        </button>
+            <button className="control-button" onClick={() => setRows(rows + 1)}>
+              <FaPlus className="mr-2" /> Agregar Fila
+            </button>
+            <button className="control-button" onClick={() => setColumns([...columns, getNextColumn(columns)])}>
+              <FaPlus className="mr-2" /> Agregar Columna
+            </button>
+          </div>
+
+          <div
+            className="table-container"
+            ref={tableContainerRef}
+            onMouseLeave={() => setIsSelecting(false)}
+            onMouseUp={handleCellMouseUp}
+          >
+            <table className="table" style={{ transform: `scale(${zoomLevel})`, transformOrigin: "top left" }}>
+              <thead>
+                <tr>
+                  <th className="fixed-header"></th>
+                  {columns.map((col) => (
+                    <th key={col} className="column-header">
+                      {col}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {Array.from({ length: rows }, (_, i) => i + 1).map((row) => (
+                  <tr key={row}>
+                    <td className="row-header">{row}</td>
+                    {columns.map((col) => {
+                      const position = filteredPositions.find(
+                        (pos) => pos.piso === selectedPiso && pos.fila === row && pos.columna === col,
+                      )
+                      const isSelected = isCellSelected(row, col)
+
+                      // Verificar si la celda es parte de un área combinada
+                      const mergedAreaPosition = filteredPositions.find(
+                        (pos) => pos.piso === selectedPiso && isCellInMergedArea(row, col, pos),
+                      )
+
+                      // Si la celda está en un área combinada, omitir la renderización si no es la celda principal
+                      if (mergedAreaPosition) {
+                        const isMainCell = mergedAreaPosition.mergedCells.some(
+                          (cell) =>
+                            cell.row === row &&
+                            cell.col === col &&
+                            mergedAreaPosition.fila === row &&
+                            mergedAreaPosition.columna === col,
+                        )
+
+                        if (!isMainCell) {
+                          return null // No renderizar la celda si no es la celda principal
+                        }
+
+                        // Calcular colSpan y rowSpan para la celda principal
+                        const rows = mergedAreaPosition.mergedCells.map((c) => Number(c.row))
+                        const cols = mergedAreaPosition.mergedCells.map((c) => columns.indexOf(c.col))
+
+                        const startRow = Math.min(...rows)
+                        const endRow = Math.max(...rows)
+                        const startCol = Math.min(...cols)
+                        const endCol = Math.max(...cols)
+
+                        const colSpan = endCol - startCol + 1
+                        const rowSpan = endRow - startRow + 1
+
+                        return renderTableCell(mergedAreaPosition, row, col, isSelected, true, colSpan, rowSpan)
+                      }
+
+                      return renderTableCell(position, row, col, isSelected, false, 1, 1)
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {viewMode === "tabla" && renderAllPositionsTable()}
+
+      <div className={`notification ${notification.type}`} style={{ display: notification.show ? "block" : "none" }}>
+        {notification.message}
       </div>
 
-      <div
-        className="table-container"
-        ref={tableContainerRef}
-        onMouseLeave={() => setIsSelecting(false)}
-        onMouseUp={handleCellMouseUp}
-      >
-        <table className="table" style={{ transform: `scale(${zoomLevel})`, transformOrigin: "top left" }}>
-          <thead>
-            <tr>
-              <th className="fixed-header"></th>
-              {columns.map((col) => (
-                <th key={col} className="column-header">
-                  {col}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {Array.from({ length: rows }, (_, i) => i + 1).map((row) => (
-              <tr key={row}>
-                <td className="row-header">{row}</td>
-                {columns.map((col) => {
-                  // Buscar posición exacta primero
-                  const exactPosition = filteredPositions.find(
-                    (p) => Number(p.fila) === Number(row) && p.columna === col,
-                  )
-
-                  // Si no hay posición exacta, buscar en áreas combinadas
-                  const mergedPosition = !exactPosition
-                    ? filteredPositions.find((p) => isCellInMergedArea(row, col, p))
-                    : null
-
-                  // Usar la posición exacta si existe, de lo contrario usar la combinada
-                  const position = exactPosition || mergedPosition
-
-                  const isMainCellPosition =
-                    position && Number(position.fila) === Number(row) && position.columna === col
-                  const isMerged = position && !isMainCellPosition && isCellInMergedArea(row, col, position)
-
-                  const isSelected = isCellSelected(row, col)
-
-                  if (isMerged && !isMainCellPosition) {
-                    return null
-                  }
-
-                  let colSpan = 1
-                  let rowSpan = 1
-
-                  if (isMainCellPosition && position.mergedCells?.length > 0) {
-                    const cells = position.mergedCells
-                    const maxCol = Math.max(...cells.map((c) => columns.indexOf(c.col)))
-                    const minCol = Math.min(...cells.map((c) => columns.indexOf(c.col)))
-                    const maxRow = Math.max(...cells.map((c) => c.row))
-                    const minRow = Math.min(...cells.map((c) => c.row))
-                    colSpan = maxCol - minCol + 1
-                    rowSpan = maxRow - minRow + 1
-                  }
-
-                  return renderTableCell(position, row, col, isSelected, isMainCellPosition, colSpan, rowSpan)
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
 
       {loading && (
-        <div className="modal-overlay">
-          <div className="modal">
-            <div className="loader"></div>
-            <h2>Cargando posiciones...</h2>
-            <p>Por favor, espera mientras se procesan los datos.</p>
-          </div>
-        </div>
-      )}
-
-      {notification.show && (
-        <div className="notification-overlay">
-          <div className={`notification-modal ${notification.type}`}>
-            <div className="notification-icon">
-              {notification.type === "success" ? <FaCheck /> : <FaExclamationTriangle />}
+            <div className="modal-overlay">
+            <div className="modal">
+                <div className="loader"></div>
+                <h2>Cargando posiciones...</h2>
+                <p>Por favor, espera mientras se procesan los datos.</p>
             </div>
-            <p>{notification.message}</p>
-          </div>
-        </div>
-      )}
+            </div>
+        )}
 
+        {notification.show && (
+            <div className="notification-overlay">
+            <div className={`notification-modal ${notification.type}`}>
+                <div className="notification-icon">
+                {notification.type === "success" ? <FaCheck /> : <FaExclamationTriangle />}
+                </div>
+                <p>{notification.message}</p>
+            </div>
+            </div>
+        )}
+
+
+      {/* Modal para crear/editar posición */}
       {isModalOpen && (
-        <div className="modal-overlay">
-          <div className="modal">
-            <button
-              className="close-button"
-              onClick={() => {
-                setIsModalOpen(false)
-                clearSelection()
-              }}
-            >
-              <FaTimes />
-            </button>
-            <h2>{newPosition.id ? "Editar Posición" : "Agregar Posición"}</h2>
-
-            <div className="form-grid">
-              <div className="form-group">
-                <label>Id:</label>
-                <input value={newPosition.id || ""} disabled={true} placeholder="Se asignará automáticamente" />
-              </div>
-
-              <div className="form-group">
-                <label>Nombre:</label>
-                <input
-                  value={newPosition.nombre || ""}
-                  onChange={(e) => setNewPosition({ ...newPosition, nombre: e.target.value })}
-                />
-              </div>
-
-              <div className="form-group">
-                <label>Tipo:</label>
-                <input
-                  value={newPosition.tipo || ""}
-                  onChange={(e) => setNewPosition({ ...newPosition, tipo: e.target.value })}
-                />
-              </div>
-
-              <div className="form-group">
-                <label>Estado:</label>
-                <div className="select-with-preview">
-                  <select
-                    value={newPosition.estado}
-                    onChange={(e) => setNewPosition({ ...newPosition, estado: e.target.value })}
-                  >
-                    {ESTADOS.map((estado) => (
-                      <option key={estado.value} value={estado.value}>
-                        {estado.label}
-                      </option>
-                    ))}
-                  </select>
-                  <div
-                    className="estado-preview"
-                    style={{ backgroundColor: ESTADOS.find((e) => e.value === newPosition.estado)?.color }}
-                  />
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label>Servicio:</label>
-                <div className="select-with-preview">
-                  <select
-                    value={newPosition.servicio || ""}
-                    onChange={(e) => setNewPosition({ ...newPosition, servicio: e.target.value })}
-                  >
-                    <option value="">Seleccione un servicio</option>
-                    {servicios.map((servicio) => (
-                      <option key={servicio.id} value={servicio.id}>
-                        {servicio.nombre}
-                      </option>
-                    ))}
-                  </select>
-                  <div
-                    className="color-preview"
-                    style={{
-                      backgroundColor: newPosition.servicio ? getServiceColor(newPosition.servicio) : COLOR_DEFAULT,
-                    }}
-                  />
-                </div>
-                {newPosition.servicio && (
-                  <div className="text-muted">El color de la celda se determinará por el servicio seleccionado</div>
-                )}
-              </div>
-
-              <div className="form-group">
-                <label>Color de Texto:</label>
-                <div className="select-with-preview">
-                  <input
-                    type="color"
-                    value={newPosition.colorFuente}
-                    onChange={(e) => setNewPosition({ ...newPosition, colorFuente: e.target.value })}
-                    className="color-input"
-                  />
-                  <div className="color-preview" style={{ backgroundColor: newPosition.colorFuente }} />
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label>Piso:</label>
-                <select
-                  value={newPosition.piso}
-                  onChange={(e) => setNewPosition({ ...newPosition, piso: e.target.value })}
+            <div className="modal-overlay">
+            <div className="modal">
+                <button
+                className="close-button"
+                onClick={() => {
+                    setIsModalOpen(false)
+                    clearSelection()
+                }}
                 >
-                  {PISOS.map((piso) => (
-                    <option key={piso.value} value={piso.value}>
-                      {piso.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="form-group">
-                <label>Fila:</label>
-                <input
-                  type="number"
-                  value={newPosition.fila}
-                  onChange={(e) => setNewPosition({ ...newPosition, fila: Number.parseInt(e.target.value) })}
-                />
-              </div>
-
-              <div className="form-group">
-                <label>Columna:</label>
-                <input
-                  value={newPosition.columna}
-                  onChange={(e) => setNewPosition({ ...newPosition, columna: e.target.value })}
-                />
-              </div>
-
-              <div className="form-group full-width">
-                <label>Bordes:</label>
-                <div className="border-controls">
-                  <div className="border-control-group">
-                    <button
-                      type="button"
-                      className={`border-button ${newPosition.bordeDetalle?.top ? "active" : ""}`}
-                      onClick={() => handleBorderChange("top")}
-                    >
-                      Superior
-                    </button>
-                    <button
-                      type="button"
-                      className={`border-button ${newPosition.bordeDetalle?.topDouble ? "active" : ""}`}
-                      onClick={() => handleBorderChange("top", true)}
-                    >
-                      Doble
-                    </button>
-                  </div>
-                  <div className="border-control-group">
-                    <button
-                      type="button"
-                      className={`border-button ${newPosition.bordeDetalle?.bottom ? "active" : ""}`}
-                      onClick={() => handleBorderChange("bottom")}
-                    >
-                      Inferior
-                    </button>
-                    <button
-                      type="button"
-                      className={`border-button ${newPosition.bordeDetalle?.bottomDouble ? "active" : ""}`}
-                      onClick={() => handleBorderChange("bottom", true)}
-                    >
-                      Doble
-                    </button>
-                  </div>
-                  <div className="border-control-group">
-                    <button
-                      type="button"
-                      className={`border-button ${newPosition.bordeDetalle?.left ? "active" : ""}`}
-                      onClick={() => handleBorderChange("left")}
-                    >
-                      Izquierdo
-                    </button>
-                    <button
-                      type="button"
-                      className={`border-button ${newPosition.bordeDetalle?.leftDouble ? "active" : ""}`}
-                      onClick={() => handleBorderChange("left", true)}
-                    >
-                      Doble
-                    </button>
-                  </div>
-                  <div className="border-control-group">
-                    <button
-                      type="button"
-                      className={`border-button ${newPosition.bordeDetalle?.right ? "active" : ""}`}
-                      onClick={() => handleBorderChange("right")}
-                    >
-                      Derecho
-                    </button>
-                    <button
-                      type="button"
-                      className={`border-button ${newPosition.bordeDetalle?.rightDouble ? "active" : ""}`}
-                      onClick={() => handleBorderChange("right", true)}
-                    >
-                      Doble
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <div className="form-group full-width">
-                <label>Sede:</label>
-                <select
-                  value={newPosition.sede || ""}
-                  onChange={(e) => setNewPosition({ ...newPosition, sede: e.target.value })}
-                >
-                  <option value="">Seleccione una sede</option>
-                  {sedes.map((sede) => (
-                    <option key={sede.id} value={sede.id}>
-                      {sede.nombre}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="form-group full-width">
-                <label>Dispositivo:</label>
-                <select
-                  value={newPosition.dispositivos?.[0] || ""}
-                  onChange={(e) => {
-                    const value = e.target.value
-                    setNewPosition({
-                      ...newPosition,
-                      dispositivos: value === "" ? [] : [value],
-                    })
-                  }}
-                >
-                  <option value="">Seleccione un dispositivo</option>
-                  {dispositivos.map((dispositivo) => (
-                    <option key={dispositivo.id} value={dispositivo.id}>
-                      {dispositivo.nombre || dispositivo.serial}
-                    </option>
-                  ))}
-                </select>
-                <div className="selected-devices">
-                  {Array.isArray(newPosition.dispositivos) && newPosition.dispositivos.length > 0 && (
-                    <div className="selected-items">
-                      <p>Dispositivos seleccionados:</p>
-                      <ul>
-                        {newPosition.dispositivos.map((id) => {
-                          const device = dispositivos.find((d) => d.id.toString() === id.toString())
-                          return (
-                            <li key={id}>
-                              {device ? device.nombre || device.serial : id}
-                              <button
-                                type="button"
-                                className="remove-item"
-                                onClick={() => {
-                                  setNewPosition({
-                                    ...newPosition,
-                                    dispositivos: newPosition.dispositivos.filter((d) => d !== id),
-                                  })
-                                }}
-                              >
-                                ×
-                              </button>
-                            </li>
-                          )
-                        })}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="form-group full-width">
-                <label>Detalles:</label>
-                <textarea
-                  value={newPosition.detalles || ""}
-                  onChange={(e) => setNewPosition({ ...newPosition, detalles: e.target.value })}
-                  rows={3}
-                />
-              </div>
-
-              <div className="form-group full-width">
-                <label>Celdas Combinadas:</label>
-                <div className="merged-cells-list">
-                  {newPosition.mergedCells && newPosition.mergedCells.length > 0 ? (
-                    <div className="merged-cells-grid">
-                      {newPosition.mergedCells.map((cell, index) => (
-                        <div key={index} className="merged-cell-item">
-                          {cell.col}
-                          {cell.row}
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-muted">No hay celdas combinadas</div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="modal-buttons">
-              <button className="save-button" onClick={savePosition}>
-                Guardar
-              </button>
-              {newPosition.id && (
-                <button className="delete-button" onClick={() => deletePosition(newPosition.id)}>
-                  Eliminar
+                <FaTimes />
                 </button>
-              )}
+                <h2>{newPosition.id ? "Editar Posición" : "Agregar Posición"}</h2>
+
+                <div className="form-grid">
+                <div className="form-group">
+                    <label>Id:</label>
+                    <input value={newPosition.id || ""} disabled={true} placeholder="Se asignará automáticamente" />
+                </div>
+
+                <div className="form-group">
+                    <label>Nombre:</label>
+                    <input
+                    value={newPosition.nombre || ""}
+                    onChange={(e) => setNewPosition({ ...newPosition, nombre: e.target.value })}
+                    />
+                </div>
+
+                <div className="form-group">
+                    <label>Tipo:</label>
+                    <input
+                    value={newPosition.tipo || ""}
+                    onChange={(e) => setNewPosition({ ...newPosition, tipo: e.target.value })}
+                    />
+                </div>
+
+                <div className="form-group">
+                    <label>Estado:</label>
+                    <div className="select-with-preview">
+                    <select
+                        value={newPosition.estado}
+                        onChange={(e) => setNewPosition({ ...newPosition, estado: e.target.value })}
+                    >
+                        {ESTADOS.map((estado) => (
+                        <option key={estado.value} value={estado.value}>
+                            {estado.label}
+                        </option>
+                        ))}
+                    </select>
+                    <div
+                        className="estado-preview"
+                        style={{ backgroundColor: ESTADOS.find((e) => e.value === newPosition.estado)?.color }}
+                    />
+                    </div>
+                </div>
+
+                <div className="form-group">
+                    <label>Servicio:</label>
+                    <div className="select-with-preview">
+                    <select
+                        value={newPosition.servicio || ""}
+                        onChange={(e) => setNewPosition({ ...newPosition, servicio: e.target.value })}
+                    >
+                        <option value="">Seleccione un servicio</option>
+                        {servicios.map((servicio) => (
+                        <option key={servicio.id} value={servicio.id}>
+                            {servicio.nombre}
+                        </option>
+                        ))}
+                    </select>
+                    <div
+                        className="color-preview"
+                        style={{
+                        backgroundColor: newPosition.servicio ? getServiceColor(newPosition.servicio) : COLOR_DEFAULT,
+                        }}
+                    />
+                    </div>
+                    {newPosition.servicio && (
+                    <div className="text-muted">El color de la celda se determinará por el servicio seleccionado</div>
+                    )}
+                </div>
+
+                <div className="form-group">
+                    <label>Color de Texto:</label>
+                    <div className="select-with-preview">
+                    <input
+                        type="color"
+                        value={newPosition.colorFuente}
+                        onChange={(e) => setNewPosition({ ...newPosition, colorFuente: e.target.value })}
+                        className="color-input"
+                    />
+                    <div className="color-preview" style={{ backgroundColor: newPosition.colorFuente }} />
+                    </div>
+                </div>
+
+                <div className="form-group">
+                    <label>Piso:</label>
+                    <select
+                    value={newPosition.piso}
+                    onChange={(e) => setNewPosition({ ...newPosition, piso: e.target.value })}
+                    >
+                    {PISOS.map((piso) => (
+                        <option key={piso.value} value={piso.value}>
+                        {piso.label}
+                        </option>
+                    ))}
+                    </select>
+                </div>
+
+                <div className="form-group">
+                    <label>Fila:</label>
+                    <input
+                    type="number"
+                    value={newPosition.fila}
+                    onChange={(e) => setNewPosition({ ...newPosition, fila: Number.parseInt(e.target.value) })}
+                    />
+                </div>
+
+                <div className="form-group">
+                    <label>Columna:</label>
+                    <input
+                    value={newPosition.columna}
+                    onChange={(e) => setNewPosition({ ...newPosition, columna: e.target.value })}
+                    />
+                </div>
+
+                <div className="form-group full-width">
+                    <label>Bordes:</label>
+                    <div className="border-controls">
+                    <div className="border-control-group">
+                        <button
+                        type="button"
+                        className={`border-button ${newPosition.bordeDetalle?.top ? "active" : ""}`}
+                        onClick={() => handleBorderChange("top")}
+                        >
+                        Superior
+                        </button>
+                        <button
+                        type="button"
+                        className={`border-button ${newPosition.bordeDetalle?.topDouble ? "active" : ""}`}
+                        onClick={() => handleBorderChange("top", true)}
+                        >
+                        Doble
+                        </button>
+                    </div>
+                    <div className="border-control-group">
+                        <button
+                        type="button"
+                        className={`border-button ${newPosition.bordeDetalle?.bottom ? "active" : ""}`}
+                        onClick={() => handleBorderChange("bottom")}
+                        >
+                        Inferior
+                        </button>
+                        <button
+                        type="button"
+                        className={`border-button ${newPosition.bordeDetalle?.bottomDouble ? "active" : ""}`}
+                        onClick={() => handleBorderChange("bottom", true)}
+                        >
+                        Doble
+                        </button>
+                    </div>
+                    <div className="border-control-group">
+                        <button
+                        type="button"
+                        className={`border-button ${newPosition.bordeDetalle?.left ? "active" : ""}`}
+                        onClick={() => handleBorderChange("left")}
+                        >
+                        Izquierdo
+                        </button>
+                        <button
+                        type="button"
+                        className={`border-button ${newPosition.bordeDetalle?.leftDouble ? "active" : ""}`}
+                        onClick={() => handleBorderChange("left", true)}
+                        >
+                        Doble
+                        </button>
+                    </div>
+                    <div className="border-control-group">
+                        <button
+                        type="button"
+                        className={`border-button ${newPosition.bordeDetalle?.right ? "active" : ""}`}
+                        onClick={() => handleBorderChange("right")}
+                        >
+                        Derecho
+                        </button>
+                        <button
+                        type="button"
+                        className={`border-button ${newPosition.bordeDetalle?.rightDouble ? "active" : ""}`}
+                        onClick={() => handleBorderChange("right", true)}
+                        >
+                        Doble
+                        </button>
+                    </div>
+                    </div>
+                </div>
+
+                <div className="form-group full-width">
+                    <label>Sede:</label>
+                    <select
+                    value={newPosition.sede || ""}
+                    onChange={(e) => setNewPosition({ ...newPosition, sede: e.target.value })}
+                    >
+                    <option value="">Seleccione una sede</option>
+                    {sedes.map((sede) => (
+                        <option key={sede.id} value={sede.id}>
+                        {sede.nombre}
+                        </option>
+                    ))}
+                    </select>
+                </div>
+
+                <div className="form-group full-width">
+                    <label>Dispositivo:</label>
+                    <select
+                    value={newPosition.dispositivos?.[0] || ""}
+                    onChange={(e) => {
+                        const value = e.target.value
+                        setNewPosition({
+                        ...newPosition,
+                        dispositivos: value === "" ? [] : [value],
+                        })
+                    }}
+                    >
+                    <option value="">Seleccione un dispositivo</option>
+                    {dispositivos.map((dispositivo) => (
+                        <option key={dispositivo.id} value={dispositivo.id}>
+                        {dispositivo.nombre || dispositivo.serial}
+                        </option>
+                    ))}
+                    </select>
+                    <div className="selected-devices">
+                    {Array.isArray(newPosition.dispositivos) && newPosition.dispositivos.length > 0 && (
+                        <div className="selected-items">
+                        <p>Dispositivos seleccionados:</p>
+                        <ul>
+                            {newPosition.dispositivos.map((id) => {
+                            const device = dispositivos.find((d) => d.id.toString() === id.toString())
+                            return (
+                                <li key={id}>
+                                {device ? device.nombre || device.serial : id}
+                                <button
+                                    type="button"
+                                    className="remove-item"
+                                    onClick={() => {
+                                    setNewPosition({
+                                        ...newPosition,
+                                        dispositivos: newPosition.dispositivos.filter((d) => d !== id),
+                                    })
+                                    }}
+                                >
+                                    ×
+                                </button>
+                                </li>
+                            )
+                            })}
+                        </ul>
+                        </div>
+                    )}
+                    </div>
+                </div>
+
+                <div className="form-group full-width">
+                    <label>Detalles:</label>
+                    <textarea
+                    value={newPosition.detalles || ""}
+                    onChange={(e) => setNewPosition({ ...newPosition, detalles: e.target.value })}
+                    rows={3}
+                    />
+                </div>
+
+                <div className="form-group full-width">
+                    <label>Celdas Combinadas:</label>
+                    <div className="merged-cells-list">
+                    {newPosition.mergedCells && newPosition.mergedCells.length > 0 ? (
+                        <div className="merged-cells-grid">
+                        {newPosition.mergedCells.map((cell, index) => (
+                            <div key={index} className="merged-cell-item">
+                            {cell.col}
+                            {cell.row}
+                            </div>
+                        ))}
+                        </div>
+                    ) : (
+                        <div className="text-muted">No hay celdas combinadas</div>
+                    )}
+                    </div>
+                </div>
+                </div>
+
+                <div className="modal-buttons">
+                <button className="save-button" onClick={savePosition}>
+                    Guardar
+                </button>
+                {newPosition.id && (
+                    <button className="delete-button" onClick={() => deletePosition(newPosition.id)}>
+                    Eliminar
+                    </button>
+                )}
+                </div>
             </div>
-          </div>
+            </div>
+        )}
         </div>
-      )}
-    </div>
-  )
-}
+    )
+    }
 
 export default FloorPlan
+
