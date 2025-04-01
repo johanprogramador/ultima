@@ -1806,8 +1806,8 @@ function FloorPlan() {
             <div className="modal-overlay">
             <div className="modal">
                 <div className="loader"></div>
-                <h2>Cargando posiciones...</h2>
-                <p>Por favor, espera mientras se procesan los datos.</p>
+                <h1 className="h11">Cargando posiciones...</h1>
+                <p className="pp">Por favor, espera mientras se procesan los datos.</p>
             </div>
             </div>
         )}
@@ -1837,7 +1837,7 @@ function FloorPlan() {
                 >
                 <FaTimes />
                 </button>
-                <h2>{newPosition.id ? "Editar Posición" : "Agregar Posición"}</h2>
+                <h2 className="h11">{newPosition.id ? "Editar Posición" : "Agregar Posición"}</h2>
 
                 <div className="form-grid">
                 <div className="form-group">
@@ -2058,7 +2058,7 @@ function FloorPlan() {
                     <div className="selected-devices">
                     {Array.isArray(newPosition.dispositivos) && newPosition.dispositivos.length > 0 && (
                         <div className="selected-items">
-                        <p>Dispositivos seleccionados:</p>
+                        <p className="pp">Dispositivos seleccionados:</p>
                         <ul>
                             {newPosition.dispositivos.map((id) => {
                             const device = dispositivos.find((d) => d.id.toString() === id.toString())
