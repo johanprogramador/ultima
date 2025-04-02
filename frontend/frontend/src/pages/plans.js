@@ -2528,4 +2528,3 @@ function FloorPlan() {
 }
 
 export default FloorPlan
-
