@@ -15,9 +15,27 @@ import {
   FaExclamationTriangle,
   FaList,
   FaTable,
+  FaChartPie,
 } from "react-icons/fa"
 import * as XLSX from "xlsx"
-import "../styles/Plans.css" // Updated import path
+import "../styles/Plans.css" // Asegúrate de que esta ruta es correcta
+
+// Add these imports at the top of the file, after the existing imports
+import {
+  Chart as ChartJS,
+  ArcElement,
+  Tooltip,
+  Legend,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+} from "chart.js"
+import { Doughnut } from "react-chartjs-2"
+
+// Register ChartJS components
+ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, PointElement, LineElement, Title)
 
 const API_URL = "http://127.0.0.1:8000/"
 
@@ -420,15 +438,27 @@ function FloorPlan() {
   const [notification, setNotification] = useState({ show: false, message: "", type: "success" })
   const tableContainerRef = useRef(null)
   const [defaultDeviceId, setDefaultDeviceId] = useState(null)
-
-  // Nuevo estado para controlar la vista (tabla o plano)
-  const [viewMode, setViewMode] = useState("plano") // "plano" o "tabla"
   const [showAllPositions, setShowAllPositions] = useState(false)
+
+  // Modificar el estado viewMode para incluir las estadísticas como un modo de visualización
+  // Cambiar:
+  //const [viewMode, setViewMode] = useState("plano") // "plano" o "tabla"
+  //const [showStats, setShowStats] = useState(false)
+
+  // Por:
+  const [viewMode, setViewMode] = useState("plano") // "plano", "tabla" o "estadisticas"
+  // Eliminamos el estado showStats ya que ahora usaremos viewMode para todo
 
   // Estados para los selectores
   const [servicios, setServicios] = useState([])
   const [sedes, setSedes] = useState([])
   const [dispositivos, setDispositivos] = useState([])
+
+  // Nuevo estado para el filtro de servicio en las estadísticas
+  const [selectedService, setSelectedService] = useState("")
+
+  // Nuevo estado para controlar la visibilidad del panel de estadísticas
+  //const [showStats, setShowStats] = useState(false)
 
   // Función para cargar los datos de los selectores
   const fetchSelectorData = async () => {
@@ -1324,37 +1354,371 @@ function FloorPlan() {
     setIsModalOpen(true)
   }
 
-  // Filtrar posiciones según el modo de visualización
-  const filteredPositions = Object.values(positions).filter((pos) => {
-    // Si estamos mostrando todas las posiciones, solo aplicamos el filtro de búsqueda
-    if (showAllPositions) {
+  // Nueva función para obtener estadísticas por servicio
+  const getServiceStatistics = () => {
+    // Obtener todas las posiciones para la vista actual (filtradas por piso o todas)
+    const positionsToAnalyze = showAllPositions
+      ? Object.values(positions)
+      : Object.values(positions).filter((pos) => pos.piso === selectedPiso)
+
+    // Agrupar posiciones por servicio
+    const serviceGroups = {}
+    const serviceColors = {}
+    const serviceAvailability = {}
+
+    // Inicializar con la categoría "Sin servicio"
+    serviceGroups["Sin servicio"] = 0
+    serviceColors["Sin servicio"] = "#CCCCCC"
+    serviceAvailability["Sin servicio"] = { disponible: 0, ocupado: 0, reservado: 0, inactivo: 0 }
+
+    // Contar posiciones por servicio
+    positionsToAnalyze.forEach((pos) => {
+      const serviceName = pos.servicio
+        ? typeof pos.servicio === "object"
+          ? pos.servicio.nombre
+          : getServiceName(pos.servicio)
+        : "Sin servicio"
+
+      // Contar por servicio
+      if (!serviceGroups[serviceName]) {
+        serviceGroups[serviceName] = 0
+        serviceAvailability[serviceName] = { disponible: 0, ocupado: 0, reservado: 0, inactivo: 0 }
+      }
+      serviceGroups[serviceName]++
+
+      // Almacenar color del servicio
+      if (!serviceColors[serviceName] && pos.servicio) {
+        serviceColors[serviceName] = getServiceColor(pos.servicio)
+      }
+
+      // Contar por estado de disponibilidad
+      if (pos.estado === "disponible") {
+        serviceAvailability[serviceName].disponible++
+      } else if (pos.estado === "ocupado") {
+        serviceAvailability[serviceName].ocupado++
+      } else if (pos.estado === "reservado") {
+        serviceAvailability[serviceName].reservado++
+      } else if (pos.estado === "inactivo") {
+        serviceAvailability[serviceName].inactivo++
+      }
+    })
+
+    return { serviceGroups, serviceColors, serviceAvailability }
+  }
+
+  // Nueva función para preparar datos del gráfico
+  const prepareChartData = () => {
+    const { serviceGroups, serviceColors } = getServiceStatistics()
+
+    const labels = Object.keys(serviceGroups)
+    const data = Object.values(serviceGroups)
+    const backgroundColor = labels.map((label) => serviceColors[label] || "#CCCCCC")
+
+    return {
+      labels,
+      datasets: [
+        {
+          data,
+          backgroundColor,
+          borderColor: backgroundColor.map((color) => (color === "#CCCCCC" ? "#999999" : color)),
+          borderWidth: 1,
+        },
+      ],
+    }
+  }
+
+  // Nueva función para filtrar posiciones por servicio seleccionado
+  const filterPositionsByService = (positionsArray) => {
+    if (!selectedService) return positionsArray
+
+    return positionsArray.filter((pos) => {
+      const serviceName = pos.servicio
+        ? typeof pos.servicio === "object"
+          ? pos.servicio.nombre
+          : getServiceName(pos.servicio)
+        : "Sin servicio"
+
+      return serviceName === selectedService
+    })
+  }
+
+  // Modificar la variable filteredPositions para incluir el filtro de servicio
+  const filteredPositions = filterPositionsByService(
+    Object.values(positions).filter((pos) => {
+      // Si estamos mostrando todas las posiciones, solo aplicamos el filtro de búsqueda
+      if (showAllPositions) {
+        return (
+          searchTerm === "" ||
+          (pos.nombre && pos.nombre.toLowerCase().includes(searchTerm.toLowerCase())) ||
+          (pos.servicio &&
+            typeof pos.servicio === "object" &&
+            pos.servicio.nombre &&
+            pos.servicio.nombre.toLowerCase().includes(searchTerm.toLowerCase())) ||
+          (pos.servicio &&
+            typeof pos.servicio === "string" &&
+            getServiceName(pos.servicio).toLowerCase().includes(searchTerm.toLowerCase()))
+        )
+      }
+
+      // Si estamos mostrando solo un piso, aplicamos ambos filtros
       return (
-        searchTerm === "" ||
-        (pos.nombre && pos.nombre.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (pos.servicio &&
-          typeof pos.servicio === "object" &&
-          pos.servicio.nombre &&
-          pos.servicio.nombre.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (pos.servicio &&
-          typeof pos.servicio === "string" &&
-          getServiceName(pos.servicio).toLowerCase().includes(searchTerm.toLowerCase()))
+        pos.piso === selectedPiso &&
+        (searchTerm === "" ||
+          (pos.nombre && pos.nombre.toLowerCase().includes(searchTerm.toLowerCase())) ||
+          (pos.servicio &&
+            typeof pos.servicio === "object" &&
+            pos.servicio.nombre &&
+            pos.servicio.nombre.toLowerCase().includes(searchTerm.toLowerCase())) ||
+          (pos.servicio &&
+            typeof pos.servicio === "string" &&
+            getServiceName(pos.servicio).toLowerCase().includes(searchTerm.toLowerCase())))
       )
+    }),
+  )
+
+  // Nueva función para renderizar el panel de estadísticas
+  // Modificar la función renderStatisticsPanel para incluir los estilos directamente en el componente
+  // en lugar de depender de un archivo CSS externo
+
+  const renderStatisticsPanel = () => {
+    const { serviceGroups, serviceAvailability } = getServiceStatistics()
+    const chartData = prepareChartData()
+
+    // Calcular totales
+    let totalPositions, totalDisponible, totalOcupado, totalReservado, totalInactivo
+
+    if (selectedService) {
+      // Si hay un servicio seleccionado, mostrar solo los datos de ese servicio
+      totalPositions = serviceGroups[selectedService] || 0
+      totalDisponible = serviceAvailability[selectedService]?.disponible || 0
+      totalOcupado = serviceAvailability[selectedService]?.ocupado || 0
+      totalReservado = serviceAvailability[selectedService]?.reservado || 0
+      totalInactivo = serviceAvailability[selectedService]?.inactivo || 0
+    } else {
+      // Si no hay servicio seleccionado, mostrar los totales generales
+      totalPositions = Object.values(serviceGroups).reduce((sum, count) => sum + count, 0)
+      totalDisponible = Object.values(serviceAvailability).reduce((sum, status) => sum + status.disponible, 0)
+      totalOcupado = Object.values(serviceAvailability).reduce((sum, status) => sum + status.ocupado, 0)
+      totalReservado = Object.values(serviceAvailability).reduce((sum, status) => sum + status.reservado, 0)
+      totalInactivo = Object.values(serviceAvailability).reduce((sum, status) => sum + status.inactivo, 0)
     }
 
-    // Si estamos mostrando solo un piso, aplicamos ambos filtros
+    // Estilos inline para el panel de estadísticas
+    const statsContainerStyle = {
+      marginBottom: "20px",
+      backgroundColor: "var(--surface)",
+      borderRadius: "var(--radius)",
+      padding: "15px",
+      boxShadow: "var(--shadow)",
+      border: "1px solid var(--border)",
+    }
+
+    const statsTitleStyle = {
+      fontSize: "1.2rem",
+      fontWeight: "600",
+      marginBottom: "15px",
+      color: "var(--text)",
+      textAlign: "center",
+    }
+
+    const statsContentStyle = {
+      display: "flex",
+      flexWrap: "wrap",
+      gap: "20px",
+    }
+
+    const chartContainerStyle = {
+      flex: "1",
+      minWidth: "300px",
+      height: "300px",
+      position: "relative",
+    }
+
+    const summaryContainerStyle = {
+      flex: "1",
+      minWidth: "300px",
+    }
+
+    const summaryHeaderStyle = {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: "15px",
+      flexWrap: "wrap",
+      gap: "10px",
+    }
+
+    const summaryTitleStyle = {
+      fontSize: "1.1rem",
+      fontWeight: "600",
+      margin: "0",
+      color: "var(--text)",
+    }
+
+    const serviceFilterStyle = {
+      display: "flex",
+      alignItems: "center",
+      gap: "10px",
+    }
+
+    const serviceSelectStyle = {
+      padding: "6px 10px",
+      backgroundColor: "var(--surface)",
+      border: "1px solid var(--border)",
+      borderRadius: "var(--radius-sm)",
+      color: "var(--text)",
+      fontSize: "0.9rem",
+    }
+
+    const summaryCardsStyle = {
+      display: "grid",
+      gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))",
+      gap: "15px",
+    }
+
+    const cardBaseStyle = {
+      backgroundColor: "var(--surface)",
+      borderRadius: "var(--radius)",
+      padding: "15px",
+      textAlign: "center",
+      boxShadow: "var(--shadow)",
+      transition: "transform 0.2s",
+    }
+
+    const cardTitleStyle = {
+      fontSize: "0.9rem",
+      fontWeight: "500",
+      margin: "0 0 10px 0",
+      color: "var(--text-secondary)",
+    }
+
+    const cardValueStyle = {
+      fontSize: "1.8rem",
+      fontWeight: "700",
+      marginBottom: "5px",
+      color: "var(--text)",
+    }
+
+    const cardPercentageStyle = {
+      fontSize: "0.9rem",
+      color: "var(--text-secondary)",
+    }
+
     return (
-      pos.piso === selectedPiso &&
-      (searchTerm === "" ||
-        (pos.nombre && pos.nombre.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (pos.servicio &&
-          typeof pos.servicio === "object" &&
-          pos.servicio.nombre &&
-          pos.servicio.nombre.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (pos.servicio &&
-          typeof pos.servicio === "string" &&
-          getServiceName(pos.servicio).toLowerCase().includes(searchTerm.toLowerCase())))
+      <div style={statsContainerStyle}>
+        <h2 style={statsTitleStyle}>
+          {selectedService
+            ? `Estadísticas de Posiciones: ${selectedService}`
+            : "Estadísticas de Posiciones por Servicio"}
+        </h2>
+
+        <div style={statsContentStyle}>
+          {/* Contenedor del gráfico */}
+          <div style={chartContainerStyle}>
+            <Doughnut
+              data={chartData}
+              options={{
+                plugins: {
+                  legend: {
+                    position: "right",
+                    labels: {
+                      color: "#e9e9e9",
+                      usePointStyle: true,
+                      padding: 20,
+                      font: {
+                        size: 12,
+                      },
+                    },
+                  },
+                  tooltip: {
+                    callbacks: {
+                      label: (context) => {
+                        const label = context.label || ""
+                        const value = context.raw || 0
+                        const percentage = Math.round(
+                          (value / Object.values(serviceGroups).reduce((sum, count) => sum + count, 0)) * 100,
+                        )
+                        return `${label}: ${value} (${percentage}%)`
+                      },
+                    },
+                  },
+                },
+                maintainAspectRatio: false,
+                cutout: "70%",
+                onClick: (event, elements) => {
+                  if (elements.length > 0) {
+                    const clickedIndex = elements[0].index
+                    const clickedService = Object.keys(serviceGroups)[clickedIndex]
+                    setSelectedService((prevService) => (prevService === clickedService ? "" : clickedService))
+                  }
+                },
+              }}
+            />
+          </div>
+
+          {/* Contenedor del resumen */}
+          <div style={summaryContainerStyle}>
+            <div style={summaryHeaderStyle}>
+              <h3 style={summaryTitleStyle}>
+                {selectedService ? `Resumen: ${selectedService}` : "Resumen de Posiciones"}
+              </h3>
+              <div style={serviceFilterStyle}>
+                <label style={{ color: "#e9e9e9" }}>Filtrar por servicio: </label>
+                <select
+                  value={selectedService}
+                  onChange={(e) => setSelectedService(e.target.value)}
+                  style={serviceSelectStyle}
+                >
+                  <option value="">Todos los servicios</option>
+                  {Object.keys(serviceGroups).map((service) => (
+                    <option key={service} value={service}>
+                      {service}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Tarjetas de resumen */}
+            <div style={summaryCardsStyle}>
+              <div style={{ ...cardBaseStyle, borderLeft: "4px solid #6c63ff" }}>
+                <h4 style={cardTitleStyle}>Total</h4>
+                <div style={cardValueStyle}>{totalPositions}</div>
+              </div>
+              <div style={{ ...cardBaseStyle, borderLeft: "4px solid #28a745" }}>
+                <h4 style={cardTitleStyle}>Disponibles</h4>
+                <div style={cardValueStyle}>{totalDisponible}</div>
+                <div style={cardPercentageStyle}>
+                  {totalPositions > 0 ? Math.round((totalDisponible / totalPositions) * 100) : 0}%
+                </div>
+              </div>
+              <div style={{ ...cardBaseStyle, borderLeft: "4px solid #ff4757" }}>
+                <h4 style={cardTitleStyle}>Ocupadas</h4>
+                <div style={cardValueStyle}>{totalOcupado}</div>
+                <div style={cardPercentageStyle}>
+                  {totalPositions > 0 ? Math.round((totalOcupado / totalPositions) * 100) : 0}%
+                </div>
+              </div>
+              <div style={{ ...cardBaseStyle, borderLeft: "4px solid #ffc107" }}>
+                <h4 style={cardTitleStyle}>Reservadas</h4>
+                <div style={cardValueStyle}>{totalReservado}</div>
+                <div style={cardPercentageStyle}>
+                  {totalPositions > 0 ? Math.round((totalReservado / totalPositions) * 100) : 0}%
+                </div>
+              </div>
+              <div style={{ ...cardBaseStyle, borderLeft: "4px solid #8d99ae" }}>
+                <h4 style={cardTitleStyle}>Inactivas</h4>
+                <div style={cardValueStyle}>{totalInactivo}</div>
+                <div style={cardPercentageStyle}>
+                  {totalPositions > 0 ? Math.round((totalInactivo / totalPositions) * 100) : 0}%
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     )
-  })
+  }
 
   // Reemplazar la función handleEditPosition para manejar mejor los datos
   const handleEditPosition = (position) => {
@@ -1622,7 +1986,6 @@ function FloorPlan() {
 
   return (
     <div className="dashboard-container">
-
       <div className="controls-container">
         <div className="tabs">
           {PISOS.map((piso) => (
@@ -1669,7 +2032,8 @@ function FloorPlan() {
             />
           </div>
 
-          {/* Botones para cambiar el modo de visualización */}
+          {/* Modificar los botones de navegación para establecer directamente el modo deseado */}
+          {/* Buscar la sección de botones y reemplazarla por: */}
           <div className="action-buttonn" style={{ marginLeft: "10px" }}>
             <button
               className={`action-buttonn ${viewMode === "plano" ? "active" : ""}`}
@@ -1686,6 +2050,15 @@ function FloorPlan() {
               <FaList /> Tabla
             </button>
 
+            {/* Botón para mostrar estadísticas */}
+            <button
+              className={`action-buttonn ${viewMode === "estadisticas" ? "active" : ""}`}
+              onClick={() => setViewMode("estadisticas")}
+              title="Estadísticas"
+            >
+              <FaChartPie /> Estadísticas
+            </button>
+
             {/* Checkbox para mostrar todas las posiciones */}
             <label style={{ display: "flex", alignItems: "center", marginLeft: "10px" }}>
               <input
@@ -1699,6 +2072,31 @@ function FloorPlan() {
           </div>
         </div>
       </div>
+
+      {/* Modificar la lógica de renderizado para mostrar el contenido según viewMode */}
+      {/* Reemplazar: */}
+      {/* Panel de estadísticas */}
+      {/*{showStats && renderStatisticsPanel()}*/}
+
+      {/*{viewMode === "plano" && (*/}
+      {/*  <>*/}
+      {/*    <div className="zoom-controls">*/}
+      {/*      /!* ... *!/*/}
+      {/*    </div>*/}
+
+      {/*    <div*/}
+      {/*      className="table-container"*/}
+      {/*      /!* ... *!/*/}
+      {/*    >*/}
+      {/*      /!* ... *!/*/}
+      {/*    </div>*/}
+      {/*  </>*/}
+      {/*)}*/}
+
+      {/*{viewMode === "tabla" && renderAllPositionsTable()}*/}
+
+      {/* Por: */}
+      {viewMode === "estadisticas" && renderStatisticsPanel()}
 
       {viewMode === "plano" && (
         <>
@@ -1801,335 +2199,333 @@ function FloorPlan() {
         {notification.message}
       </div>
 
-
       {loading && (
-            <div className="modal-overlay">
-            <div className="modal">
-                <div className="loader"></div>
-                <h1 className="h11">Cargando posiciones...</h1>
-                <p className="pp">Por favor, espera mientras se procesan los datos.</p>
-            </div>
-            </div>
-        )}
+        <div className="modal-overlay">
+          <div className="modal">
+            <div className="loader"></div>
+            <h1 className="h11">Cargando posiciones...</h1>
+            <p className="pp">Por favor, espera mientras se procesan los datos.</p>
+          </div>
+        </div>
+      )}
 
-        {notification.show && (
-            <div className="notification-overlay">
-            <div className={`notification-modal ${notification.type}`}>
-                <div className="notification-icon">
-                {notification.type === "success" ? <FaCheck /> : <FaExclamationTriangle />}
-                </div>
-                <p>{notification.message}</p>
+      {notification.show && (
+        <div className="notification-overlay">
+          <div className={`notification-modal ${notification.type}`}>
+            <div className="notification-icon">
+              {notification.type === "success" ? <FaCheck /> : <FaExclamationTriangle />}
             </div>
-            </div>
-        )}
-
+            <p>{notification.message}</p>
+          </div>
+        </div>
+      )}
 
       {/* Modal para crear/editar posición */}
       {isModalOpen && (
-            <div className="modal-overlay">
-            <div className="modal">
-                <button
-                className="close-button"
-                onClick={() => {
-                    setIsModalOpen(false)
-                    clearSelection()
-                }}
-                >
-                <FaTimes />
-                </button>
-                <h2 className="h11">{newPosition.id ? "Editar Posición" : "Agregar Posición"}</h2>
+        <div className="modal-overlay">
+          <div className="modal">
+            <button
+              className="close-button"
+              onClick={() => {
+                setIsModalOpen(false)
+                clearSelection()
+              }}
+            >
+              <FaTimes />
+            </button>
+            <h2 className="h11">{newPosition.id ? "Editar Posición" : "Agregar Posición"}</h2>
 
-                <div className="form-grid">
-                <div className="form-group">
-                    <label>Id:</label>
-                    <input value={newPosition.id || ""} disabled={true} placeholder="Se asignará automáticamente" />
-                </div>
+            <div className="form-grid">
+              <div className="form-group">
+                <label>Id:</label>
+                <input value={newPosition.id || ""} disabled={true} placeholder="Se asignará automáticamente" />
+              </div>
 
-                <div className="form-group">
-                    <label>Nombre:</label>
-                    <input
-                    value={newPosition.nombre || ""}
-                    onChange={(e) => setNewPosition({ ...newPosition, nombre: e.target.value })}
-                    />
-                </div>
+              <div className="form-group">
+                <label>Nombre:</label>
+                <input
+                  value={newPosition.nombre || ""}
+                  onChange={(e) => setNewPosition({ ...newPosition, nombre: e.target.value })}
+                />
+              </div>
 
-                <div className="form-group">
-                    <label>Tipo:</label>
-                    <input
-                    value={newPosition.tipo || ""}
-                    onChange={(e) => setNewPosition({ ...newPosition, tipo: e.target.value })}
-                    />
-                </div>
+              <div className="form-group">
+                <label>Tipo:</label>
+                <input
+                  value={newPosition.tipo || ""}
+                  onChange={(e) => setNewPosition({ ...newPosition, tipo: e.target.value })}
+                />
+              </div>
 
-                <div className="form-group">
-                    <label>Estado:</label>
-                    <div className="select-with-preview">
-                    <select
-                        value={newPosition.estado}
-                        onChange={(e) => setNewPosition({ ...newPosition, estado: e.target.value })}
-                    >
-                        {ESTADOS.map((estado) => (
-                        <option key={estado.value} value={estado.value}>
-                            {estado.label}
-                        </option>
-                        ))}
-                    </select>
-                    <div
-                        className="estado-preview"
-                        style={{ backgroundColor: ESTADOS.find((e) => e.value === newPosition.estado)?.color }}
-                    />
-                    </div>
-                </div>
-
-                <div className="form-group">
-                    <label>Servicio:</label>
-                    <div className="select-with-preview">
-                    <select
-                        value={newPosition.servicio || ""}
-                        onChange={(e) => setNewPosition({ ...newPosition, servicio: e.target.value })}
-                    >
-                        <option value="">Seleccione un servicio</option>
-                        {servicios.map((servicio) => (
-                        <option key={servicio.id} value={servicio.id}>
-                            {servicio.nombre}
-                        </option>
-                        ))}
-                    </select>
-                    <div
-                        className="color-preview"
-                        style={{
-                        backgroundColor: newPosition.servicio ? getServiceColor(newPosition.servicio) : COLOR_DEFAULT,
-                        }}
-                    />
-                    </div>
-                    {newPosition.servicio && (
-                    <div className="text-muted">El color de la celda se determinará por el servicio seleccionado</div>
-                    )}
-                </div>
-
-                <div className="form-group">
-                    <label>Color de Texto:</label>
-                    <div className="select-with-preview">
-                    <input
-                        type="color"
-                        value={newPosition.colorFuente}
-                        onChange={(e) => setNewPosition({ ...newPosition, colorFuente: e.target.value })}
-                        className="color-input"
-                    />
-                    <div className="color-preview" style={{ backgroundColor: newPosition.colorFuente }} />
-                    </div>
-                </div>
-
-                <div className="form-group">
-                    <label>Piso:</label>
-                    <select
-                    value={newPosition.piso}
-                    onChange={(e) => setNewPosition({ ...newPosition, piso: e.target.value })}
-                    >
-                    {PISOS.map((piso) => (
-                        <option key={piso.value} value={piso.value}>
-                        {piso.label}
-                        </option>
+              <div className="form-group">
+                <label>Estado:</label>
+                <div className="select-with-preview">
+                  <select
+                    value={newPosition.estado}
+                    onChange={(e) => setNewPosition({ ...newPosition, estado: e.target.value })}
+                  >
+                    {ESTADOS.map((estado) => (
+                      <option key={estado.value} value={estado.value}>
+                        {estado.label}
+                      </option>
                     ))}
-                    </select>
+                  </select>
+                  <div
+                    className="estado-preview"
+                    style={{ backgroundColor: ESTADOS.find((e) => e.value === newPosition.estado)?.color }}
+                  />
                 </div>
+              </div>
 
-                <div className="form-group">
-                    <label>Fila:</label>
-                    <input
-                    type="number"
-                    value={newPosition.fila}
-                    onChange={(e) => setNewPosition({ ...newPosition, fila: Number.parseInt(e.target.value) })}
-                    />
-                </div>
-
-                <div className="form-group">
-                    <label>Columna:</label>
-                    <input
-                    value={newPosition.columna}
-                    onChange={(e) => setNewPosition({ ...newPosition, columna: e.target.value })}
-                    />
-                </div>
-
-                <div className="form-group full-width">
-                    <label>Bordes:</label>
-                    <div className="border-controls">
-                    <div className="border-control-group">
-                        <button
-                        type="button"
-                        className={`border-button ${newPosition.bordeDetalle?.top ? "active" : ""}`}
-                        onClick={() => handleBorderChange("top")}
-                        >
-                        Superior
-                        </button>
-                        <button
-                        type="button"
-                        className={`border-button ${newPosition.bordeDetalle?.topDouble ? "active" : ""}`}
-                        onClick={() => handleBorderChange("top", true)}
-                        >
-                        Doble
-                        </button>
-                    </div>
-                    <div className="border-control-group">
-                        <button
-                        type="button"
-                        className={`border-button ${newPosition.bordeDetalle?.bottom ? "active" : ""}`}
-                        onClick={() => handleBorderChange("bottom")}
-                        >
-                        Inferior
-                        </button>
-                        <button
-                        type="button"
-                        className={`border-button ${newPosition.bordeDetalle?.bottomDouble ? "active" : ""}`}
-                        onClick={() => handleBorderChange("bottom", true)}
-                        >
-                        Doble
-                        </button>
-                    </div>
-                    <div className="border-control-group">
-                        <button
-                        type="button"
-                        className={`border-button ${newPosition.bordeDetalle?.left ? "active" : ""}`}
-                        onClick={() => handleBorderChange("left")}
-                        >
-                        Izquierdo
-                        </button>
-                        <button
-                        type="button"
-                        className={`border-button ${newPosition.bordeDetalle?.leftDouble ? "active" : ""}`}
-                        onClick={() => handleBorderChange("left", true)}
-                        >
-                        Doble
-                        </button>
-                    </div>
-                    <div className="border-control-group">
-                        <button
-                        type="button"
-                        className={`border-button ${newPosition.bordeDetalle?.right ? "active" : ""}`}
-                        onClick={() => handleBorderChange("right")}
-                        >
-                        Derecho
-                        </button>
-                        <button
-                        type="button"
-                        className={`border-button ${newPosition.bordeDetalle?.rightDouble ? "active" : ""}`}
-                        onClick={() => handleBorderChange("right", true)}
-                        >
-                        Doble
-                        </button>
-                    </div>
-                    </div>
-                </div>
-
-                <div className="form-group full-width">
-                    <label>Sede:</label>
-                    <select
-                    value={newPosition.sede || ""}
-                    onChange={(e) => setNewPosition({ ...newPosition, sede: e.target.value })}
-                    >
-                    <option value="">Seleccione una sede</option>
-                    {sedes.map((sede) => (
-                        <option key={sede.id} value={sede.id}>
-                        {sede.nombre}
-                        </option>
+              <div className="form-group">
+                <label>Servicio:</label>
+                <div className="select-with-preview">
+                  <select
+                    value={newPosition.servicio || ""}
+                    onChange={(e) => setNewPosition({ ...newPosition, servicio: e.target.value })}
+                  >
+                    <option value="">Seleccione un servicio</option>
+                    {servicios.map((servicio) => (
+                      <option key={servicio.id} value={servicio.id}>
+                        {servicio.nombre}
+                      </option>
                     ))}
-                    </select>
-                </div>
-
-                <div className="form-group full-width">
-                    <label>Dispositivo:</label>
-                    <select
-                    value={newPosition.dispositivos?.[0] || ""}
-                    onChange={(e) => {
-                        const value = e.target.value
-                        setNewPosition({
-                        ...newPosition,
-                        dispositivos: value === "" ? [] : [value],
-                        })
+                  </select>
+                  <div
+                    className="color-preview"
+                    style={{
+                      backgroundColor: newPosition.servicio ? getServiceColor(newPosition.servicio) : COLOR_DEFAULT,
                     }}
-                    >
-                    <option value="">Seleccione un dispositivo</option>
-                    {dispositivos.map((dispositivo) => (
-                        <option key={dispositivo.id} value={dispositivo.id}>
-                        {dispositivo.nombre || dispositivo.serial}
-                        </option>
-                    ))}
-                    </select>
-                    <div className="selected-devices">
-                    {Array.isArray(newPosition.dispositivos) && newPosition.dispositivos.length > 0 && (
-                        <div className="selected-items">
-                        <p className="pp">Dispositivos seleccionados:</p>
-                        <ul>
-                            {newPosition.dispositivos.map((id) => {
-                            const device = dispositivos.find((d) => d.id.toString() === id.toString())
-                            return (
-                                <li key={id}>
-                                {device ? device.nombre || device.serial : id}
-                                <button
-                                    type="button"
-                                    className="remove-item"
-                                    onClick={() => {
-                                    setNewPosition({
-                                        ...newPosition,
-                                        dispositivos: newPosition.dispositivos.filter((d) => d !== id),
-                                    })
-                                    }}
-                                >
-                                    ×
-                                </button>
-                                </li>
-                            )
-                            })}
-                        </ul>
-                        </div>
-                    )}
-                    </div>
+                  />
                 </div>
-
-                <div className="form-group full-width">
-                    <label>Detalles:</label>
-                    <textarea
-                    value={newPosition.detalles || ""}
-                    onChange={(e) => setNewPosition({ ...newPosition, detalles: e.target.value })}
-                    rows={3}
-                    />
-                </div>
-
-                <div className="form-group full-width">
-                    <label>Celdas Combinadas:</label>
-                    <div className="merged-cells-list">
-                    {newPosition.mergedCells && newPosition.mergedCells.length > 0 ? (
-                        <div className="merged-cells-grid">
-                        {newPosition.mergedCells.map((cell, index) => (
-                            <div key={index} className="merged-cell-item">
-                            {cell.col}
-                            {cell.row}
-                            </div>
-                        ))}
-                        </div>
-                    ) : (
-                        <div className="text-muted">No hay celdas combinadas</div>
-                    )}
-                    </div>
-                </div>
-                </div>
-
-                <div className="modal-buttons">
-                <button className="save-button" onClick={savePosition}>
-                    Guardar
-                </button>
-                {newPosition.id && (
-                    <button className="delete-button" onClick={() => deletePosition(newPosition.id)}>
-                    Eliminar
-                    </button>
+                {newPosition.servicio && (
+                  <div className="text-muted">El color de la celda se determinará por el servicio seleccionado</div>
                 )}
+              </div>
+
+              <div className="form-group">
+                <label>Color de Texto:</label>
+                <div className="select-with-preview">
+                  <input
+                    type="color"
+                    value={newPosition.colorFuente}
+                    onChange={(e) => setNewPosition({ ...newPosition, colorFuente: e.target.value })}
+                    className="color-input"
+                  />
+                  <div className="color-preview" style={{ backgroundColor: newPosition.colorFuente }} />
                 </div>
+              </div>
+
+              <div className="form-group">
+                <label>Piso:</label>
+                <select
+                  value={newPosition.piso}
+                  onChange={(e) => setNewPosition({ ...newPosition, piso: e.target.value })}
+                >
+                  {PISOS.map((piso) => (
+                    <option key={piso.value} value={piso.value}>
+                      {piso.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label>Fila:</label>
+                <input
+                  type="number"
+                  value={newPosition.fila}
+                  onChange={(e) => setNewPosition({ ...newPosition, fila: Number.parseInt(e.target.value) })}
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Columna:</label>
+                <input
+                  value={newPosition.columna}
+                  onChange={(e) => setNewPosition({ ...newPosition, columna: e.target.value })}
+                />
+              </div>
+
+              <div className="form-group full-width">
+                <label>Bordes:</label>
+                <div className="border-controls">
+                  <div className="border-control-group">
+                    <button
+                      type="button"
+                      className={`border-button ${newPosition.bordeDetalle?.top ? "active" : ""}`}
+                      onClick={() => handleBorderChange("top")}
+                    >
+                      Superior
+                    </button>
+                    <button
+                      type="button"
+                      className={`border-button ${newPosition.bordeDetalle?.topDouble ? "active" : ""}`}
+                      onClick={() => handleBorderChange("top", true)}
+                    >
+                      Doble
+                    </button>
+                  </div>
+                  <div className="border-control-group">
+                    <button
+                      type="button"
+                      className={`border-button ${newPosition.bordeDetalle?.bottom ? "active" : ""}`}
+                      onClick={() => handleBorderChange("bottom")}
+                    >
+                      Inferior
+                    </button>
+                    <button
+                      type="button"
+                      className={`border-button ${newPosition.bordeDetalle?.bottomDouble ? "active" : ""}`}
+                      onClick={() => handleBorderChange("bottom", true)}
+                    >
+                      Doble
+                    </button>
+                  </div>
+                  <div className="border-control-group">
+                    <button
+                      type="button"
+                      className={`border-button ${newPosition.bordeDetalle?.left ? "active" : ""}`}
+                      onClick={() => handleBorderChange("left")}
+                    >
+                      Izquierdo
+                    </button>
+                    <button
+                      type="button"
+                      className={`border-button ${newPosition.bordeDetalle?.leftDouble ? "active" : ""}`}
+                      onClick={() => handleBorderChange("left", true)}
+                    >
+                      Doble
+                    </button>
+                  </div>
+                  <div className="border-control-group">
+                    <button
+                      type="button"
+                      className={`border-button ${newPosition.bordeDetalle?.right ? "active" : ""}`}
+                      onClick={() => handleBorderChange("right")}
+                    >
+                      Derecho
+                    </button>
+                    <button
+                      type="button"
+                      className={`border-button ${newPosition.bordeDetalle?.rightDouble ? "active" : ""}`}
+                      onClick={() => handleBorderChange("right", true)}
+                    >
+                      Doble
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="form-group full-width">
+                <label>Sede:</label>
+                <select
+                  value={newPosition.sede || ""}
+                  onChange={(e) => setNewPosition({ ...newPosition, sede: e.target.value })}
+                >
+                  <option value="">Seleccione una sede</option>
+                  {sedes.map((sede) => (
+                    <option key={sede.id} value={sede.id}>
+                      {sede.nombre}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group full-width">
+                <label>Dispositivo:</label>
+                <select
+                  value={newPosition.dispositivos?.[0] || ""}
+                  onChange={(e) => {
+                    const value = e.target.value
+                    setNewPosition({
+                      ...newPosition,
+                      dispositivos: value === "" ? [] : [value],
+                    })
+                  }}
+                >
+                  <option value="">Seleccione un dispositivo</option>
+                  {dispositivos.map((dispositivo) => (
+                    <option key={dispositivo.id} value={dispositivo.id}>
+                      {dispositivo.nombre || dispositivo.serial}
+                    </option>
+                  ))}
+                </select>
+                <div className="selected-devices">
+                  {Array.isArray(newPosition.dispositivos) && newPosition.dispositivos.length > 0 && (
+                    <div className="selected-items">
+                      <p className="pp">Dispositivos seleccionados:</p>
+                      <ul>
+                        {newPosition.dispositivos.map((id) => {
+                          const device = dispositivos.find((d) => d.id.toString() === id.toString())
+                          return (
+                            <li key={id}>
+                              {device ? device.nombre || device.serial : id}
+                              <button
+                                type="button"
+                                className="remove-item"
+                                onClick={() => {
+                                  setNewPosition({
+                                    ...newPosition,
+                                    dispositivos: newPosition.dispositivos.filter((d) => d !== id),
+                                  })
+                                }}
+                              >
+                                ×
+                              </button>
+                            </li>
+                          )
+                        })}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="form-group full-width">
+                <label>Detalles:</label>
+                <textarea
+                  value={newPosition.detalles || ""}
+                  onChange={(e) => setNewPosition({ ...newPosition, detalles: e.target.value })}
+                  rows={3}
+                />
+              </div>
+
+              <div className="form-group full-width">
+                <label>Celdas Combinadas:</label>
+                <div className="merged-cells-list">
+                  {newPosition.mergedCells && newPosition.mergedCells.length > 0 ? (
+                    <div className="merged-cells-grid">
+                      {newPosition.mergedCells.map((cell, index) => (
+                        <div key={index} className="merged-cell-item">
+                          {cell.col}
+                          {cell.row}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-muted">No hay celdas combinadas</div>
+                  )}
+                </div>
+              </div>
             </div>
+
+            <div className="modal-buttons">
+              <button className="save-button" onClick={savePosition}>
+                Guardar
+              </button>
+              {newPosition.id && (
+                <button className="delete-button" onClick={() => deletePosition(newPosition.id)}>
+                  Eliminar
+                </button>
+              )}
             </div>
-        )}
+          </div>
         </div>
-    )
-    }
+      )}
+    </div>
+  )
+}
 
 export default FloorPlan
 
