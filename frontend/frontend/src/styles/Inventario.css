@@ -60,12 +60,13 @@
     border: 1px solid #374151;
     border-radius: 0.375rem;
     color: #ffffff;
+
 }
 
 .search-icont {
     position: absolute;
     left: 0.75rem;
-    top: 50%;
+    top: 30%;
     transform: translateY(-50%);
     color: #9ca3af;
 }

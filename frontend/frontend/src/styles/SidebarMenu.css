@@ -1,59 +1,125 @@
-/* SidebarMenu.css */
+    /* SidebarMenu.css */
 
-/* Contenedor del Sidebar */
-.sidebar {
-    width: 100px; /* Ancho fijo del menú lateral */
-    height: 100vh; /* Asegura que el sidebar ocupe toda la altura de la pantalla */
-    background-color: #353a50; /* Color de fondo del menú */
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding-top: 20px; /* Espacio en la parte superior */
-    position: fixed; /* Fija el sidebar a la izquierda */
-    left: 0; /* Asegura que el menú esté pegado a la izquierda */
-    top: 0; /* Asegura que el menú esté pegado a la parte superior */
-    z-index: 1000; /* Asegura que el menú esté por encima de otros elementos */
-}
-
-/* Estilo de cada ítem del menú */
-.menu-item {
-    width: 100%;
-    padding: 15px 0; /* Espaciado interno para cada ítem */
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    color: #ffffff; /* Color del texto */
-    font-size: 14px; /* Tamaño de la fuente */
-    cursor: pointer; /* Cambia el cursor al pasar el mouse */
-    transition: 0.3s; /* Transición suave para efectos hover */
-    text-align: center; /* Centra el texto */
-}
-
-/* Resaltar el ítem activo */
-.menu-item.active {
-    color: #a48bef; /* Cambia el color del texto para el ítem activo */
-}
-
-/* Efecto hover para los ítems */
-.menu-item:hover {
-    color: #a48bef; /* Cambia el color del texto al pasar el mouse */
-}
-
-/* Línea divisoria */
-.divider {
-    width: 60%; /* Ancho de la línea divisoria */
-    height: 1px; /* Grosor de la línea */
-    background-color: #555; /* Color de la línea */
-    margin: 10px 0; /* Espacio alrededor de la línea */
-}
-
-/* Diseño responsivo para que el ícono y el texto estén alineados */
-.menu-item span {
-    margin-top: 5px; /* Espacio entre el ícono y el texto */
-    font-size: 12px; /* Tamaño de la fuente del texto */
-}
-
-/* Asegurarse de que los iconos y el texto no se solapen */
-.menu-item svg {
-    margin-bottom: 5px; /* Espacio debajo del ícono */
-}
+    /* Contenedor del Sidebar */
+    .sidebar {
+        width: 100px; /* Ancho fijo del menú lateral */
+        height: 100vh; /* Asegura que el sidebar ocupe toda la altura de la pantalla */
+        background-color: #353a50; /* Color de fondo del menú */
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between; /* Distribuye el espacio entre los elementos y el botón de salir */
+        position: fixed; /* Fija el sidebar a la izquierda */
+        left: 0; /* Asegura que el menú esté pegado a la izquierda */
+        top: 0; /* Asegura que el menú esté pegado a la parte superior */
+        z-index: 1000; /* Asegura que el menú esté por encima de otros elementos */
+        overflow-y: auto; /* Permite desplazamiento vertical si es necesario */
+        scrollbar-width: thin; /* Para Firefox */
+        scrollbar-color: #a48bef #353a50; /* Para Firefox */
+    }
+    
+    /* Estilo para la barra de desplazamiento en Chrome, Edge, y Safari */
+    .sidebar::-webkit-scrollbar {
+        width: 4px;
+    }
+    
+    .sidebar::-webkit-scrollbar-track {
+        background: #353a50;
+    }
+    
+    .sidebar::-webkit-scrollbar-thumb {
+        background-color: #a48bef;
+        border-radius: 4px;
+    }
+    
+    /* Contenedor para los elementos del menú */
+    .menu-items-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 100%;
+        padding-top: 20px; /* Espacio en la parte superior */
+        overflow-y: auto; /* Permite desplazamiento si hay muchos elementos */
+    }
+    
+    /* Estilo de cada ítem del menú */
+    .menu-item {
+        width: 100%;
+        padding: 12px 0; /* Reducido el padding para que quepan más elementos */
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        color: #ffffff; /* Color del texto */
+        font-size: 12px; /* Tamaño de la fuente reducido */
+        cursor: pointer; /* Cambia el cursor al pasar el mouse */
+        transition: 0.3s; /* Transición suave para efectos hover */
+        text-align: center; /* Centra el texto */
+        text-decoration: none; /* Elimina el subrayado de los enlaces */
+    }
+    
+    /* Resaltar el ítem activo */
+    .menu-item.active {
+        color: #a48bef; /* Cambia el color del texto para el ítem activo */
+    }
+    
+    /* Efecto hover para los ítems */
+    .menu-item:hover {
+        color: #a48bef; /* Cambia el color del texto al pasar el mouse */
+    }
+    
+    /* Contenedor para el footer del sidebar */
+    .sidebar-footer {
+        margin-top: auto; /* Empuja el footer hacia abajo */
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+    
+    /* Línea divisoria */
+    .divider {
+        width: 60%; /* Ancho de la línea divisoria */
+        height: 1px; /* Grosor de la línea */
+        background-color: #555; /* Color de la línea */
+        margin: 10px 0; /* Espacio alrededor de la línea */
+    }
+    
+    /* Diseño responsivo para que el ícono y el texto estén alineados */
+    .menu-item span {
+        margin-top: 5px; /* Espacio entre el ícono y el texto */
+        font-size: 11px; /* Tamaño de la fuente del texto reducido */
+        white-space: nowrap; /* Evita que el texto se rompa en varias líneas */
+        overflow: hidden; /* Oculta el texto que se desborda */
+        text-overflow: ellipsis; /* Muestra puntos suspensivos si el texto es demasiado largo */
+        max-width: 90%; /* Limita el ancho máximo del texto */
+    }
+    
+    /* Asegurarse de que los iconos y el texto no se solapen */
+    .menu-item svg {
+        margin-bottom: 3px; /* Espacio reducido debajo del ícono */
+        min-height: 20px; /* Altura mínima para el ícono */
+    }
+    
+    /* Estilo específico para el botón de logout */
+    .logout-button {
+        margin-bottom: 15px; /* Espacio en la parte inferior */
+        background: none;
+        border: none;
+        outline: none;
+    }
+    
+    /* Media query para pantallas más pequeñas */
+    @media screen and (max-height: 700px) {
+        .menu-item {
+        padding: 8px 0; /* Padding reducido para pantallas más pequeñas */
+        }
+    
+        .menu-item svg {
+        transform: scale(0.9); /* Reduce ligeramente el tamaño de los iconos */
+        }
+    
+        .menu-item span {
+        font-size: 10px; /* Fuente más pequeña para pantallas más pequeñas */
+        }
+    }
+    
+    

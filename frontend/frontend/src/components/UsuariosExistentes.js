@@ -1,13 +1,16 @@
-import { useState, useEffect, useCallback } from "react";
-import axios from "axios";
-import { FaUser, FaEdit, FaPlus } from "react-icons/fa";
-import "../styles/UsuariosExistentes.css";
+"use client"
+
+import { useState, useEffect, useCallback } from "react"
+import axios from "axios"
+import { FaUser, FaEdit, FaPlus, FaSearch, FaChevronLeft, FaChevronRight } from "react-icons/fa"
+import "../styles/UsuariosExistentes.css"
 
 const UsuariosExistentes = () => {
-  const [users, setUsers] = useState([]);
-  const [selectedUser, setSelectedUser] = useState(null);
-  const [showDetailModal, setShowDetailModal] = useState(false);
-  const [showForm, setShowForm] = useState(false);
+  const [users, setUsers] = useState([])
+  const [filteredUsers, setFilteredUsers] = useState([])
+  const [selectedUser, setSelectedUser] = useState(null)
+  const [showDetailModal, setShowDetailModal] = useState(false)
+  const [showForm, setShowForm] = useState(false)
   const [newUser, setNewUser] = useState({
     username: "",
     nombre: "",
@@ -17,49 +20,92 @@ const UsuariosExistentes = () => {
     rol: "coordinador", // Valor predeterminado según el modelo de Django
     password: "",
     confirm_password: "",
-  });
+  })
   const [alert, setAlert] = useState({
     show: false,
     message: "",
     type: "error", // Puede ser "error" o "success"
-  });
+  })
+
+  // Estados para búsqueda y paginación
+  const [searchTerm, setSearchTerm] = useState("")
+  const [currentPage, setCurrentPage] = useState(1)
+  const [itemsPerPage, setItemsPerPage] = useState(6)
+  const [totalPages, setTotalPages] = useState(1)
 
   const showAlert = (message, type = "error") => {
-    setAlert({ show: true, message, type });
-    setTimeout(() => setAlert({ show: false, message: "", type: "error" }), 3000);
-  };
+    setAlert({ show: true, message, type })
+    setTimeout(() => setAlert({ show: false, message: "", type: "error" }), 3000)
+  }
 
   // Efecto para ocultar la alerta después de 3 segundos
   useEffect(() => {
     if (alert.show) {
       const timer = setTimeout(() => {
-        setAlert({ ...alert, show: false });
-      }, 1000); // 3000 ms = 3 segundos
-      return () => clearTimeout(timer); // Limpiar el timer si el componente se desmonta
+        setAlert({ ...alert, show: false })
+      }, 1000) // 1000 ms = 1 segundo
+      return () => clearTimeout(timer) // Limpiar el timer si el componente se desmonta
     }
-  }, [alert]);
+  }, [alert])
+
+  // Aplicar filtros a los usuarios
+  const applyFilters = (usersData = users) => {
+    let filtered = [...usersData]
+
+    if (searchTerm) {
+      filtered = filtered.filter(
+        (user) =>
+          (user.nombre && user.nombre.toLowerCase().includes(searchTerm.toLowerCase())) ||
+          (user.username && user.username.toLowerCase().includes(searchTerm.toLowerCase())) ||
+          (user.email && user.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
+          (user.documento && user.documento.toLowerCase().includes(searchTerm.toLowerCase())) ||
+          (user.celular && user.celular.toLowerCase().includes(searchTerm.toLowerCase())) ||
+          (user.rol && user.rol.toLowerCase().includes(searchTerm.toLowerCase())),
+      )
+    }
+
+    setFilteredUsers(filtered)
+    setTotalPages(Math.ceil(filtered.length / itemsPerPage))
+  }
+
+  // Obtener los usuarios para la página actual
+  const getCurrentPageItems = () => {
+    const startIndex = (currentPage - 1) * itemsPerPage
+    const endIndex = startIndex + itemsPerPage
+    return filteredUsers.slice(startIndex, endIndex)
+  }
+
+  // Calcular el rango de elementos mostrados
+  const getItemRange = () => {
+    const startItem = (currentPage - 1) * itemsPerPage + 1
+    const endItem = Math.min(startItem + itemsPerPage - 1, filteredUsers.length)
+    return `Mostrando ${startItem} a ${endItem} de ${filteredUsers.length} resultados`
+  }
 
   // Fetch the list of users
   const fetchUsers = useCallback(async () => {
     try {
-      const response = await axios.get("http://127.0.0.1:8000/api/usuarios/");
-      setUsers(Array.isArray(response.data) ? response.data : []);
+      const response = await axios.get("http://127.0.0.1:8000/api/usuarios/")
+      const usersData = Array.isArray(response.data) ? response.data : []
+      setUsers(usersData)
+      applyFilters(usersData)
     } catch (error) {
-      console.error("Error al obtener usuarios:", error);
-      setUsers([]);
+      console.error("Error al obtener usuarios:", error)
+      setUsers([])
+      setFilteredUsers([])
     }
-  }, []);
+  }, [])
 
   // Fetch user details
   const fetchUserDetails = async (userId) => {
     try {
-      const response = await axios.get(`http://127.0.0.1:8000/api/dusuarios/${userId}/`);
-      setSelectedUser(response.data);
-      setShowDetailModal(true);
+      const response = await axios.get(`http://127.0.0.1:8000/api/dusuarios/${userId}/`)
+      setSelectedUser(response.data)
+      setShowDetailModal(true)
     } catch (error) {
-      console.error("Error al obtener los detalles del usuario:", error);
+      console.error("Error al obtener los detalles del usuario:", error)
     }
-  };
+  }
 
   // Edit user
   const editUser = async (userId, updatedUserData) => {
@@ -68,53 +114,53 @@ const UsuariosExistentes = () => {
         show: true,
         message: "Por favor, complete todos los campos obligatorios.",
         type: "error",
-      });
-      return;
+      })
+      return
     }
 
     try {
-      await axios.put(`http://127.0.0.1:8000/api/editusuarios/${userId}/`, updatedUserData);
+      await axios.put(`http://127.0.0.1:8000/api/editusuarios/${userId}/`, updatedUserData)
       setAlert({
         show: true,
         message: "Usuario editado exitosamente.",
         type: "success",
-      });
-      fetchUsers();
-      setShowDetailModal(false);
-    }catch (error) {
+      })
+      fetchUsers()
+      setShowDetailModal(false)
+    } catch (error) {
       if (error.response && error.response.data) {
-        const errorMessages = Object.values(error.response.data).flat().join(" \n");
-        showAlert(errorMessages);
+        const errorMessages = Object.values(error.response.data).flat().join(" \n")
+        showAlert(errorMessages)
       } else {
-        showAlert("Error al editar el usuario.");
+        showAlert("Error al editar el usuario.")
       }
     }
-  };
+  }
 
   // Toggle user status (activate/deactivate)
   const toggleUserStatus = async (userId, isActive) => {
     try {
       const endpoint = isActive
         ? `http://127.0.0.1:8000/api/deusuarios/${userId}/`
-        : `http://127.0.0.1:8000/api/activarusuarios/${userId}/`;
+        : `http://127.0.0.1:8000/api/activarusuarios/${userId}/`
 
-      await axios.put(endpoint);
+      await axios.put(endpoint)
       setAlert({
         show: true,
         message: `Usuario ${isActive ? "desactivado" : "activado"} exitosamente.`,
         type: "success",
-      });
-      fetchUsers(); // Refrescar la lista de usuarios después del cambio
+      })
+      fetchUsers() // Refrescar la lista de usuarios después del cambio
     } catch (error) {
       setAlert({
         show: true,
         message: "Error al cambiar el estado del usuario.",
         type: "error",
-      });
-      const errorMessage = error.response?.data?.error || "Error al desactivar el usuario.";
-      showAlert(errorMessage);
+      })
+      const errorMessage = error.response?.data?.error || "Error al desactivar el usuario."
+      showAlert(errorMessage)
     }
-  };
+  }
 
   // Add new user
   const addUser = async () => {
@@ -123,8 +169,8 @@ const UsuariosExistentes = () => {
         show: true,
         message: "Por favor, complete todos los campos obligatorios.",
         type: "error",
-      });
-      return;
+      })
+      return
     }
 
     if (newUser.password !== newUser.confirm_password) {
@@ -132,8 +178,8 @@ const UsuariosExistentes = () => {
         show: true,
         message: "Las contraseñas no coinciden.",
         type: "error",
-      });
-      return;
+      })
+      return
     }
 
     try {
@@ -146,37 +192,43 @@ const UsuariosExistentes = () => {
         rol: newUser.rol,
         password: newUser.password,
         confirm_password: newUser.confirm_password,
-      };
+      }
 
-      await axios.post("http://127.0.0.1:8000/api/register/", usuarioData);
+      await axios.post("http://127.0.0.1:8000/api/register/", usuarioData)
       setAlert({
         show: true,
         message: "Usuario agregado exitosamente.",
         type: "success",
-      });
-      setShowForm(false);
-      fetchUsers();
+      })
+      setShowForm(false)
+      fetchUsers()
     } catch (error) {
       setAlert({
         show: true,
         message: "Error al agregar el usuario.",
         type: "error",
-      });
-      const errorMessage = error.response?.data?.error || "Error al agregar el usuario.";
-      showAlert(errorMessage);
+      })
+      const errorMessage = error.response?.data?.error || "Error al agregar el usuario."
+      showAlert(errorMessage)
     }
-  };
+  }
 
   // Load users when component mounts
   useEffect(() => {
-    fetchUsers();
-  }, [fetchUsers]);
+    fetchUsers()
+  }, [fetchUsers])
+
+  // Efecto para aplicar filtros cuando cambia el término de búsqueda
+  useEffect(() => {
+    applyFilters()
+    setCurrentPage(1) // Resetear a la primera página cuando cambia la búsqueda
+  }, [searchTerm])
 
   // Componente de alerta
   const AlertModal = ({ message, type, onClose }) => {
     return (
       <div className="modal-overlay">
-        <div className="modal-container">
+        <div className="modal-container alert-container">
           <div className={`alert-modal ${type}`}>
             <p>{message}</p>
             <button className="close-button" onClick={onClose}>
@@ -185,16 +237,16 @@ const UsuariosExistentes = () => {
           </div>
         </div>
       </div>
-    );
-  };
+    )
+  }
 
   // Manejador para cerrar el modal cuando se hace clic fuera de él
   const handleOverlayClick = (e) => {
     if (e.target === e.currentTarget) {
-      setShowDetailModal(false);
-      setShowForm(false);
+      setShowDetailModal(false)
+      setShowForm(false)
     }
-  };
+  }
 
   return (
     <div className="records-container">
@@ -206,21 +258,33 @@ const UsuariosExistentes = () => {
           </button>
         </div>
 
+        {/* Buscador */}
+        <div className="search-container">
+          <div className="search-input-container">
+            <FaSearch className="search-icon" />
+            <input
+              type="text"
+              placeholder="Buscar usuarios..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="search-input"
+            />
+          </div>
+        </div>
+
         <div className="user-list">
-          {users.length > 0 ? (
-            users.map((user) => (
+          {getCurrentPageItems().length > 0 ? (
+            getCurrentPageItems().map((user) => (
               <div key={user.id} className="user-item">
                 <div className="user-avatar">
                   <FaUser />
                 </div>
                 <div className="user-info" onClick={() => fetchUserDetails(user.id)}>
                   <div className="user-name">{user.nombre}</div>
-                  <div className="user-access">
-                    {user.rol === "admin" ? "Administrador" : "Coordinador"}
-                  </div>
+                  <div className="user-access">{user.rol === "admin" ? "Administrador" : "Coordinador"}</div>
                 </div>
                 <div className="user-actions">
-                  <button className="action-button edit" onClick={() => fetchUserDetails(user.id)}>
+                  <button className="action-button-modern edit" onClick={() => fetchUserDetails(user.id)}>
                     <FaEdit />
                   </button>
                   <label className="switch">
@@ -239,15 +303,43 @@ const UsuariosExistentes = () => {
           )}
         </div>
 
+        {/* Paginación */}
+        {filteredUsers.length > 0 && (
+          <div className="pagination-container">
+            <div className="pagination-info">{getItemRange()}</div>
+            <div className="pagination-controls">
+              <button
+                onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                disabled={currentPage === 1}
+                className="pagination-arrow"
+                aria-label="Página anterior"
+              >
+                <FaChevronLeft />
+              </button>
+              <button
+                onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+                disabled={currentPage === totalPages || totalPages === 0}
+                className="pagination-arrow"
+                aria-label="Página siguiente"
+              >
+                <FaChevronRight />
+              </button>
+            </div>
+            <div className="pagination-progress-bar">
+              <div className="pagination-progress" style={{ width: `${(currentPage / totalPages) * 100}%` }}></div>
+            </div>
+          </div>
+        )}
+
         {/* Modal para ver y editar detalles del usuario */}
         {showDetailModal && selectedUser && (
           <div className="modal-overlay" onClick={handleOverlayClick}>
-            <div className="modal-container" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-container modern-modal" onClick={(e) => e.stopPropagation()}>
               <button className="close-button" onClick={() => setShowDetailModal(false)}>
                 &times;
               </button>
               <div className="modal-content">
-                <h1>Editar Usuario</h1>
+                <h1 className="modal-title">Editar Usuario</h1>
                 <div className="input-group">
                   <label>Nombre completo *</label>
                   <input
@@ -290,8 +382,13 @@ const UsuariosExistentes = () => {
                 </div>
                 <div className="input-group select-wrapper">
                   <label>Rol *</label>
-                  <select value={selectedUser.rol || ""} onChange={(e) => setSelectedUser({ ...selectedUser, rol: e.target.value })}>
-                    <option value="" disabled>Seleccione un rol</option>
+                  <select
+                    value={selectedUser.rol || ""}
+                    onChange={(e) => setSelectedUser({ ...selectedUser, rol: e.target.value })}
+                  >
+                    <option value="" disabled>
+                      Seleccione un rol
+                    </option>
                     <option value="coordinador">Coordinador</option>
                     <option value="admin">Administrador</option>
                   </select>
@@ -307,12 +404,12 @@ const UsuariosExistentes = () => {
         {/* Modal para agregar nuevo usuario */}
         {showForm && (
           <div className="modal-overlay" onClick={handleOverlayClick}>
-            <div className="modal-container" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-container modern-modal" onClick={(e) => e.stopPropagation()}>
               <button className="close-button" onClick={() => setShowForm(false)}>
                 &times;
               </button>
               <div className="modal-content">
-                <h1>Agregar Usuario</h1>
+                <h1 className="modal-title">Agregar Usuario</h1>
                 <div className="input-group">
                   <label>Nombre de usuario</label>
                   <input
@@ -378,10 +475,7 @@ const UsuariosExistentes = () => {
                 </div>
                 <div className="input-group select-wrapper">
                   <label>Rol</label>
-                  <select
-                    value={newUser.rol}
-                    onChange={(e) => setNewUser({ ...newUser, rol: e.target.value })}
-                  >
+                  <select value={newUser.rol} onChange={(e) => setNewUser({ ...newUser, rol: e.target.value })}>
                     <option value="coordinador">Coordinador</option>
                     <option value="admin">Administrador</option>
                   </select>
@@ -396,15 +490,12 @@ const UsuariosExistentes = () => {
 
         {/* Mostrar alerta */}
         {alert.show && (
-          <AlertModal
-            message={alert.message}
-            type={alert.type}
-            onClose={() => setAlert({ ...alert, show: false })}
-          />
+          <AlertModal message={alert.message} type={alert.type} onClose={() => setAlert({ ...alert, show: false })} />
         )}
       </div>
     </div>
-  );
-};
+  )
+}
 
-export default UsuariosExistentes;
+export default UsuariosExistentes
+
