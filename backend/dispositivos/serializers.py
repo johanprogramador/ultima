@@ -76,47 +76,49 @@ class DispositivoSerializer(serializers.ModelSerializer):
     nombre_sede = serializers.CharField(source='sede.nombre', read_only=True)
     posicion = serializers.PrimaryKeyRelatedField(queryset=Posicion.objects.all(), required=False)
     estado_propiedad = serializers.CharField(required=False, allow_blank=True)
+    
+    # Agrega estos campos según tu relación
+    servicios = serializers.PrimaryKeyRelatedField(queryset=Servicios.objects.all(), required=False)
+    # O si es ManyToMany:
+    # servicios = serializers.PrimaryKeyRelatedField(many=True, queryset=Servicios.objects.all(), required=False)
 
     class Meta:
         model = Dispositivo
         fields = [
             'id', 'tipo', 'estado', 'marca', 'razon_social', 'regimen', 'modelo', 'serial',
-            'placa_cu', 'posicion', 'sede','nombre_sede',
+            'placa_cu', 'posicion', 'sede', 'nombre_sede', 'servicios',  # Añade 'servicios' aquí
             'tipo_disco_duro', 'capacidad_disco_duro', 'tipo_memoria_ram', 'capacidad_memoria_ram',
             'ubicacion', 'sistema_operativo', 'procesador', 'proveedor', 'estado_propiedad'
         ]
 
     def create(self, validated_data):
-        # Validamos si `sede`, `posicion` o `servicio` existen en la base de datos
         sede = validated_data.pop('sede', None)
         posicion = validated_data.pop('posicion', None)
-        
+        servicios = validated_data.pop('servicios', None)  # Añade esta línea
 
         dispositivo = Dispositivo.objects.create(
             **validated_data,
             sede=Sede.objects.filter(id=sede.id).first() if sede else None,
-            posicion=Posicion.objects.filter(id=posicion.id).first() if posicion else None
-          
+            posicion=Posicion.objects.filter(id=posicion.id).first() if posicion else None,
+            servicios=servicios  # Añade esta línea
         )
         return dispositivo
 
     def update(self, instance, validated_data):
-        # Actualizamos solo si se proporciona un nuevo valor válido
         sede = validated_data.pop('sede', None)
         posicion = validated_data.pop('posicion', None)
-    
+        servicios = validated_data.pop('servicios', None)  # Añade esta línea
 
         instance.sede = Sede.objects.filter(id=sede.id).first() if sede else instance.sede
         instance.posicion = Posicion.objects.filter(id=posicion.id).first() if posicion else instance.posicion
-    
+        if servicios is not None:  # Añade este bloque
+            instance.servicios = servicios
 
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
 
         instance.save()
         return instance
-        
-        
 class SedeSerializer(serializers.ModelSerializer):
     class Meta:
         model = Sede

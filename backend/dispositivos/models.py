@@ -272,6 +272,12 @@ class Dispositivo(models.Model):
         ('DONADO', 'Donado'),
         ('OTRO', 'Otro'),
     ]
+    
+    ESTADO_USO = [
+    ('DISPONIBLE', 'Disponible'),
+    ('EN_USO', 'En uso'),
+    ('INHABILITADO', 'Inhabilitado'),
+]
 
     tipo = models.CharField(max_length=17, choices=TIPOS_DISPOSITIVOS)
     estado = models.CharField(max_length=10, choices=ESTADO_DISPOSITIVO, null=True, blank=True)
@@ -305,7 +311,12 @@ class Dispositivo(models.Model):
         related_name='dispositivos_asignados'
     )
     
-    disponible = models.BooleanField(default=True) 
+    disponible = models.CharField(
+    max_length=15, 
+    choices=ESTADO_USO, 
+    default='DISPONIBLE',
+    help_text="Indica si el dispositivo está disponible, en uso o inhabilitado"
+)
     
 
 
