@@ -33,11 +33,12 @@ const Dispositivos = () => {
     message: "",
     type: "error", // Puede ser "error" o "success"
   })
+  const [isSubmitting, setIsSubmitting] = useState(false) // Estado para controlar envíos múltiples
 
   // Estados para búsqueda y paginación
   const [searchTerm, setSearchTerm] = useState("")
   const [currentPage, setCurrentPage] = useState(1)
-  const [itemsPerPage, setItemsPerPage] = useState(6)
+  const [itemsPerPage] = useState(10)
   const [totalPages, setTotalPages] = useState(1)
 
   // Estado inicial de un dispositivo
@@ -157,7 +158,10 @@ const Dispositivos = () => {
 
   // Crear un nuevo dispositivo
   const addDevice = async () => {
+    if (isSubmitting) return // Evitar múltiples envíos
     if (!validateDevice(newDevice)) return
+    
+    setIsSubmitting(true)
     try {
       await axios.post("http://127.0.0.1:8000/api/dispositivos/", newDevice)
       fetchDispositivos()
@@ -175,27 +179,37 @@ const Dispositivos = () => {
         message: "Hubo un error al agregar el dispositivo.",
         type: "error",
       })
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
   // Actualizar un dispositivo
   const updateDevice = async () => {
+    if (isSubmitting) return // Evitar múltiples envíos
     if (!validateDevice(selectedDevice)) return
 
+    setIsSubmitting(true)
     try {
       // Clonar el dispositivo y limpiar los datos incorrectos
       const cleanDeviceData = { ...selectedDevice }
 
       if (!cleanDeviceData.posicion) {
         delete cleanDeviceData.posicion // Eliminar si está vacío
-      } else {
+      } else if (typeof cleanDeviceData.posicion === 'string') {
         cleanDeviceData.posicion = Number.parseInt(cleanDeviceData.posicion) // Asegurar número
+      }
+
+      if (!cleanDeviceData.sede) {
+        delete cleanDeviceData.sede // Eliminar si está vacío
+      } else if (typeof cleanDeviceData.sede === 'string') {
+        cleanDeviceData.sede = Number.parseInt(cleanDeviceData.sede) // Asegurar número
       }
 
       console.log("Enviando datos corregidos:", cleanDeviceData)
 
       await axios.put(`http://127.0.0.1:8000/api/dispositivos/${selectedDevice.id}/`, cleanDeviceData)
-      fetchDispositivos()
+      await fetchDispositivos() // Esperar a que se actualice la lista
       setShowDetailModal(false)
       setAlert({
         show: true,
@@ -204,14 +218,24 @@ const Dispositivos = () => {
       })
     } catch (error) {
       console.error("Error al actualizar el dispositivo:", error.response?.data || error)
+      setAlert({
+        show: true,
+        message: "Hubo un error al actualizar el dispositivo.",
+        type: "error",
+      })
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
   // Eliminar un dispositivo
   const deleteDevice = async (deviceId) => {
+    if (isSubmitting) return // Evitar múltiples envíos
+    
+    setIsSubmitting(true)
     try {
       await axios.delete(`http://127.0.0.1:8000/api/dispositivos/${deviceId}/`)
-      fetchDispositivos()
+      await fetchDispositivos() // Esperar a que se actualice la lista
       setAlert({
         show: true,
         message: "Dispositivo eliminado exitosamente.",
@@ -224,6 +248,8 @@ const Dispositivos = () => {
         message: "Hubo un error al eliminar el dispositivo.",
         type: "error",
       })
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -331,6 +357,7 @@ const Dispositivos = () => {
           setShowDetailModal={setShowDetailModal}
           deleteDevice={deleteDevice}
           getDeviceIcon={getDeviceIcon}
+          isSubmitting={isSubmitting}
         />
 
         {/* Paginación */}
@@ -376,6 +403,7 @@ const Dispositivos = () => {
                   onSubmit={addDevice}
                   posiciones={posiciones}
                   sedes={sedes}
+                  isSubmitting={isSubmitting}
                 />
               </div>
             </div>
@@ -397,6 +425,7 @@ const Dispositivos = () => {
                   onSubmit={updateDevice}
                   posiciones={posiciones}
                   sedes={sedes}
+                  isSubmitting={isSubmitting}
                 />
               </div>
             </div>
@@ -408,7 +437,7 @@ const Dispositivos = () => {
 }
 
 // Componente para la lista de dispositivos
-const DeviceList = ({ dispositivos, setSelectedDevice, setShowDetailModal, deleteDevice, getDeviceIcon }) => (
+const DeviceList = ({ dispositivos, setSelectedDevice, setShowDetailModal, deleteDevice, getDeviceIcon, isSubmitting }) => (
   <div className="user-list">
     {dispositivos.length > 0 ? (
       dispositivos.map((device) => (
@@ -433,10 +462,15 @@ const DeviceList = ({ dispositivos, setSelectedDevice, setShowDetailModal, delet
                 setSelectedDevice(device)
                 setShowDetailModal(true)
               }}
+              disabled={isSubmitting}
             >
               <FaEdit />
             </button>
-            <button className="action-button-modern delete" onClick={() => deleteDevice(device.id)}>
+            <button 
+              className="action-button-modern delete" 
+              onClick={() => deleteDevice(device.id)}
+              disabled={isSubmitting}
+            >
               <FaTrash />
             </button>
           </div>
@@ -449,11 +483,16 @@ const DeviceList = ({ dispositivos, setSelectedDevice, setShowDetailModal, delet
 )
 
 // Componente para el formulario de dispositivos
-const DeviceForm = ({ device, setDevice, onSubmit, posiciones, sedes }) => {
+const DeviceForm = ({ device, setDevice, onSubmit, posiciones, sedes, isSubmitting }) => {
   if (!device) return null
 
+  const handleSubmit = (e) => {
+    e.preventDefault() // Prevenir el comportamiento por defecto del formulario
+    onSubmit()
+  }
+
   return (
-    <div>
+    <form onSubmit={handleSubmit}>
       {renderInput("Modelo", "modelo", device, setDevice)}
       {renderInput("Serial", "serial", device, setDevice)}
       {renderInput("Placa CU", "placa_cu", device, setDevice)}
@@ -553,10 +592,14 @@ const DeviceForm = ({ device, setDevice, onSubmit, posiciones, sedes }) => {
           : [],
       )}
 
-      <button className="create-button" onClick={onSubmit}>
-        {device.id ? "Guardar cambios" : "Agregar"}
+      <button 
+        type="submit" 
+        className="create-button" 
+        disabled={isSubmitting}
+      >
+        {isSubmitting ? "Procesando..." : (device.id ? "Guardar cambios" : "Agregar")}
       </button>
-    </div>
+    </form>
   )
 }
 
@@ -589,4 +632,3 @@ const renderSelect = (label, field, device, setDevice, options) => (
 )
 
 export default Dispositivos
-

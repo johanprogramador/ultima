@@ -203,23 +203,6 @@ const fetchDispositivos = async () => {
           </div>
         </div>
 
-
-
-        <div className="action-buttonst">
-          <button className="action-buttont">
-            Importar Excel
-            <ArrowRight size={16} />
-          </button>
-          <button className="action-buttont">
-            Crear Dispositivo
-            <ArrowRight size={16} />
-          </button>
-          <button onClick={handleExportExcel} className="action-buttont">
-            <FileText size={16} />
-            Exportar Excel
-          </button>
-        </div>
-
         <div className="table-containert">
           <table className="inventory-tablet">
             <thead>
