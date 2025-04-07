@@ -1,58 +1,324 @@
-/* Contenedor de las cards en fila */
-.cards-container {
-    display: flex;
-    margin-top: 30px; /* Espacio entre la imagen y las cards */
-    width: 100%; /* Las cards ocupan el 100% del ancho disponible */
-    gap: 20px; /* Espacio entre las cards */
-    padding: 0 20px; /* Añade un poco de padding a los lados */
-    margin-left: -20px; /* Mueve el contenedor 10px hacia la izquierda */
-}
-
-/* Estilos para cada card */
-.card {
-    background-color: #353a50; /* Fondo oscuro para la card */
-    border-radius: 20px; /* Bordes redondeados */
-    padding: 20px; /* Espaciado interno */
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); /* Sombra para dar profundidad */
-    width: 100%; /* Las cards ocupan el 100% del ancho disponible */
-    max-width: 300px; /* Ancho máximo para cada card */
-    position: relative; /* Permite el posicionamiento absoluto del icono */
-}
-
-/* Estilos para el título de la card */
-.card h5 {
-    font-size: 16px; /* Tamaño de la fuente del título */
-    color: #fff; /* Color del texto */
-    margin-bottom: 10px; /* Espacio debajo del título */
-}
-
-/* Estilos para el valor de la card */
-.card h1 {
-    font-size: 35px; /* Tamaño de la fuente del valor */
-    color: #fff; /* Color del texto */
-    margin: 5px 0; /* Espacio alrededor del valor */
-}
-
-/* Estilos para el texto adicional de la card */
-.card p {
-    font-size: 14px; /* Tamaño de la fuente del texto adicional */
-    color: #fff; /* Color del texto */
-    margin: 5px 0; /* Espacio alrededor del texto */
-    text-align: right; /* Alinea el texto a la derecha */
-}
-
-/* Estilos para el icono en la parte superior derecha de la card */
-.card-icon {
-    position: absolute;
-    border-radius: 8px; /* Bordes redondeados para el icono */
-    top: 10px; /* Ajusta la distancia desde el borde superior */
-    right: 10px; /* Ajusta la distancia desde el borde derecho */
-    width: 40px; /* Tamaño del icono */
-    height: 40px; /* Tamaño del icono */
-    background-color: #61dafb; /* Fondo del icono */
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #fff; /* Color del ícono */
-    font-size: 20px; /* Tamaño del ícono */
-}
+    .dashboard-content {
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+        padding: 20px;
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    }
+    
+    .dashboard-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 30px;
+        flex-wrap: wrap;
+        gap: 15px;
+    }
+    
+    .dashboard-image-container {
+        display: flex;
+        align-items: center;
+    }
+    
+    .dashboard-image {
+        height: 50px;
+        object-fit: contain;
+    }
+    
+    .location-filter {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        position: relative;
+    }
+    
+    /* Estilos para el selector personalizado */
+    .custom-select {
+        position: relative;
+        width: 220px;
+    }
+    
+    .select-button {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        width: 100%;
+        padding: 10px 14px;
+        background-color: #353a50;
+        border: 1px solid #4a5172;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 14px;
+        text-align: left;
+        color: #fff;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+        transition: all 0.2s ease;
+    }
+    
+    .select-button:hover {
+        border-color: #61dafb;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+    }
+    
+    .select-arrow {
+        margin-left: 8px;
+        color: #fff;
+    }
+    
+    .select-dropdown {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        width: 100%;
+        background-color: #353a50;
+        border: 1px solid #4a5172;
+        border-radius: 6px;
+        margin-top: 4px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        z-index: 100;
+        max-height: 300px;
+        overflow-y: auto;
+    }
+    
+    .select-search {
+        padding: 10px;
+        border-bottom: 1px solid #4a5172;
+        position: relative;
+    }
+    
+    .search-icon {
+        position: absolute;
+        left: 18px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #999;
+    }
+    
+    .select-search input {
+        width: 100%;
+        padding: 8px 10px 8px 30px;
+        border: 1px solid #4a5172;
+        border-radius: 4px;
+        font-size: 14px;
+        background-color: #2a2e40;
+        color: #fff;
+        transition: border-color 0.2s ease;
+    }
+    
+    .select-search input:focus {
+        outline: none;
+        border-color: #61dafb;
+        box-shadow: 0 0 0 2px rgba(97, 218, 251, 0.2);
+    }
+    
+    .select-options {
+        list-style: none;
+        padding: 5px 0;
+        margin: 0;
+        max-height: 220px;
+        overflow-y: auto;
+    }
+    
+    .select-option {
+        padding: 10px 14px;
+        cursor: pointer;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        color: #fff;
+        transition: background-color 0.2s ease;
+    }
+    
+    .select-option:hover {
+        background-color: #4a5172;
+    }
+    
+    .select-option.selected {
+        background-color: #4a5172;
+        font-weight: 500;
+        color: #61dafb;
+    }
+    
+    .check-mark {
+        color: #61dafb;
+    }
+    
+    .no-results {
+        color: #999;
+        font-style: italic;
+        padding: 12px 14px;
+    }
+    
+    .error-message {
+        color: #ff6b6b;
+        font-size: 12px;
+        margin-top: 6px;
+        background-color: rgba(255, 107, 107, 0.2);
+        padding: 6px 10px;
+        border-radius: 4px;
+        width: 100%;
+    }
+    
+    /* Contenedor de las cards */
+    .cards-container {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 24px;
+        width: 100%;
+        margin-top: 10px;
+    }
+    
+    /* Estilos para cada card */
+    .card {
+        background-color: #353a50;
+        border-radius: 20px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        overflow: hidden;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+        flex: 1;
+        min-width: 280px;
+        max-width: 300px;
+    }
+    
+    .card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
+    }
+    
+    .card-content {
+        padding: 20px;
+    }
+    
+    .card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 16px;
+    }
+    
+    /* Estilos para el título de la card */
+    .card h5 {
+        font-size: 14px;
+        color: #fff;
+        margin: 0;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    /* Estilos para el valor de la card */
+    .card h1 {
+        font-size: 32px;
+        color: #fff;
+        margin: 0 0 10px 0;
+        font-weight: 600;
+    }
+    
+    /* Estilos para el texto adicional de la card */
+    .card p {
+        font-size: 13px;
+        color: #ccc;
+        margin: 0;
+        text-align: right;
+    }
+    
+    /* Estilos para el icono de la card */
+    .card-icon {
+        width: 36px;
+        height: 36px;
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+    }
+    
+    .no-data-message {
+        width: 100%;
+        text-align: center;
+        color: #fff;
+        padding: 24px;
+        background-color: #353a50;
+        border-radius: 20px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        margin: 20px 0;
+        font-size: 15px;
+    }
+    
+    /* Estilos para los skeletons */
+    .skeleton-card {
+        background-color: #353a50;
+    }
+    
+    .skeleton-icon {
+        width: 36px;
+        height: 36px;
+        border-radius: 6px;
+        background-color: #4a5172;
+        animation: pulse 1.5s infinite;
+    }
+    
+    .skeleton-title {
+        width: 120px;
+        height: 14px;
+        background-color: #4a5172;
+        border-radius: 4px;
+        animation: pulse 1.5s infinite;
+    }
+    
+    .skeleton-value {
+        width: 80px;
+        height: 32px;
+        background-color: #4a5172;
+        margin: 16px 0 10px 0;
+        border-radius: 4px;
+        animation: pulse 1.5s infinite;
+    }
+    
+    .skeleton-date {
+        width: 100px;
+        height: 13px;
+        background-color: #4a5172;
+        border-radius: 4px;
+        animation: pulse 1.5s infinite;
+        align-self: flex-end;
+        margin-left: auto;
+    }
+    
+    @keyframes pulse {
+        0% {
+        opacity: 0.6;
+        }
+        50% {
+        opacity: 1;
+        }
+        100% {
+        opacity: 0.6;
+        }
+    }
+    
+    @media (max-width: 768px) {
+        .dashboard-header {
+        flex-direction: column;
+        align-items: flex-start;
+        }
+    
+        .location-filter {
+        width: 100%;
+        }
+    
+        .custom-select {
+        width: 100%;
+        }
+    
+        .cards-container {
+        justify-content: center;
+        }
+    
+        .card {
+        flex: 0 0 100%;
+        max-width: 100%;
+        }
+    }
+    
+    

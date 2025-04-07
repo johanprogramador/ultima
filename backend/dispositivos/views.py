@@ -608,38 +608,87 @@ def posiciones_view(request):
 @api_view(['GET'])
 @permission_classes([]) 
 def dashboard_data(request):
-    # Ejemplo: contar dispositivos
-    total_dispositivos = Dispositivo.objects.count()
-    dispositivos_en_uso = Dispositivo.objects.filter(usuario_asignado__isnull=True).count()
-    dispositivos_disponibles = total_dispositivos - dispositivos_en_uso
+    # Obtener el parámetro de sede de la solicitud
+    sede_id = request.query_params.get('sede')
+    
+    # Filtrar dispositivos según el parámetro de sede
+    if sede_id == "null":
+        # Filtrar dispositivos sin sede asignada
+        dispositivos = Dispositivo.objects.filter(sede__isnull=True)
+    elif sede_id:
+        try:
+            # Convertir a entero para validar que es un ID válido
+            sede_id = int(sede_id)
+            
+            # Filtrar dispositivos por sede
+            dispositivos = Dispositivo.objects.filter(sede_id=sede_id)
+            
+        except (ValueError, TypeError):
+            # Si el ID de sede no es válido, devolver error
+            return Response({"error": "ID de sede inválido"}, status=400)
+    else:
+        # Si no se proporciona sede, contar todos los dispositivos
+        dispositivos = Dispositivo.objects.all()
 
-    # Ejemplo: Datos para tarjetas
+    # Contar dispositivos por estado
+    total_dispositivos = dispositivos.count()
+    dispositivos_en_uso = dispositivos.filter(estado='En uso').count()
+    dispositivos_buen_estado = dispositivos.filter(estado='Buen estado').count()
+    dispositivos_disponibles = dispositivos.filter(estado='Disponible').count()
+    dispositivos_en_reparacion = dispositivos.filter(estado='En reparación').count()
+    dispositivos_perdidos = dispositivos.filter(estado='Perdido/robado').count()
+    dispositivos_mal_estado = dispositivos.filter(estado='Mal estado').count()
+    dispositivos_inhabilitados = dispositivos.filter(estado='Inhabilitado').count()
+
+    # Datos para tarjetas
     cardsData = [
         {
             "title": "Total dispositivos",
             "value": str(total_dispositivos),
-            "date": "Hoy"  # Puedes formatear la fecha o agregar más info
+            "date": "Actualizado hoy"
         },
         {
             "title": "Dispositivos en uso",
             "value": str(dispositivos_en_uso),
-            "date": "Hoy"
+            "date": "Actualizado hoy"
+        },
+        {
+            "title": "Buen estado",
+            "value": str(dispositivos_buen_estado),
+            "date": "Actualizado hoy"
         },
         {
             "title": "Dispositivos disponibles",
             "value": str(dispositivos_disponibles),
-            "date": "Hoy"
+            "date": "Actualizado hoy"
+        },
+        {
+            "title": "En reparación",
+            "value": str(dispositivos_en_reparacion),
+            "date": "Actualizado hoy"
+        },
+        {
+            "title": "Perdidos/robados",
+            "value": str(dispositivos_perdidos),
+            "date": "Actualizado hoy"
+        },
+        {
+            "title": "Mal estado",
+            "value": str(dispositivos_mal_estado),
+            "date": "Actualizado hoy"
+        },
+        {
+            "title": "Inhabilitados",
+            "value": str(dispositivos_inhabilitados),
+            "date": "Actualizado hoy"
         }
     ]
 
-    # Aquí podrías agregar más consultas para datos de gráficas o estadísticas.
-    # Por ejemplo, si tienes un modelo de Estadísticas, podrías consultar Series de datos para la gráfica.
-    # De momento, devolveremos solo las cards.
     data = {
         "cardsData": cardsData,
-        # "quarterlyData": [...]  # Puedes agregar otros datos de gráficos aquí
     }
     return Response(data)
+
 
 from django.core.exceptions import ObjectDoesNotExist
 from thefuzz import process # type: ignore
