@@ -412,7 +412,7 @@ class Historial(models.Model):
     dispositivo = models.ForeignKey('Dispositivo', on_delete=models.CASCADE, related_name='historial')
     usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
     fecha_modificacion = models.DateTimeField(auto_now_add=True)
-    cambios = models.JSONField(null=True, blank=True)
+    cambios = models.JSONField(null=True, blank=True, encoder=None)
     tipo_cambio = models.CharField(max_length=20, choices=TipoCambio.choices, default=TipoCambio.MODIFICACION)
 
     def __str__(self):
@@ -449,13 +449,26 @@ def registrar_cambios_historial(sender, instance, created, **kwargs):
             valor_anterior = getattr(estado_anterior, nombre_campo)
             valor_nuevo = getattr(instance, nombre_campo)
 
+            # Handle foreign keys and many-to-many fields
+            if field.is_relation:
+                # For foreign keys, store the ID or string representation
+                if field.many_to_one or field.one_to_one:
+                    valor_anterior = str(valor_anterior) if valor_anterior else None
+                    valor_nuevo = str(valor_nuevo) if valor_nuevo else None
+                # Skip many-to-many fields for simplicity
+                else:
+                    continue
+
             if valor_anterior != valor_nuevo:
-                cambios[nombre_campo] = {"antes": valor_anterior, "despues": valor_nuevo}
+                cambios[nombre_campo] = {
+                    "antes": valor_anterior,
+                    "despues": valor_nuevo
+                }
 
     if cambios:
         Historial.objects.create(
             dispositivo=instance,
-            usuario=instance.usuario_asignado,  # Usuario que lo tiene asignado
+            usuario=instance.usuario_asignado,
             cambios=cambios,
             tipo_cambio=Historial.TipoCambio.MODIFICACION
         )

@@ -18,17 +18,7 @@ import {
 } from "react-icons/fa"
 import "../styles/Devices.css"
 
-// Configura axios para incluir el token en todas las peticiones
-axios.interceptors.request.use(config => {
-  const token = localStorage.getItem('access_token')
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
-  }
-  return config
-}, error => {
-  return Promise.reject(error)
-})
-
+// Componente principal
 const Dispositivos = () => {
   const [dispositivos, setDispositivos] = useState([])
   const [filteredDispositivos, setFilteredDispositivos] = useState([])
@@ -41,14 +31,17 @@ const Dispositivos = () => {
   const [alert, setAlert] = useState({
     show: false,
     message: "",
-    type: "error",
+    type: "error", // Puede ser "error" o "success"
   })
-  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false) // Estado para controlar envíos múltiples
+
+  // Estados para búsqueda y paginación
   const [searchTerm, setSearchTerm] = useState("")
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage] = useState(10)
   const [totalPages, setTotalPages] = useState(1)
 
+  // Estado inicial de un dispositivo
   function initialDeviceState() {
     return {
       tipo: "COMPUTADOR",
@@ -64,59 +57,44 @@ const Dispositivos = () => {
       razon_social: "",
       regimen: "ECCC",
       placa_cu: "",
-      posicion: null,
-      sede: null,
-      procesador: "I5_6500",
-      sistema_operativo: "WIN10",
+      posicion: null, // Clave foránea a Posicion
+      sede: null, // Clave foránea a Sede
+      procesador: "", // Agregado
+      sistema_operativo: "", // Agregado
       proveedor: "",
-      estado_propiedad: "PROPIO",
-      usuario_asignado: null,
-      disponible: "DISPONIBLE"
     }
   }
 
-  const handleApiError = (error) => {
-    console.error("API Error:", error)
-    if (error.response?.status === 401) {
-      window.location.href = '/login'
-    }
-    return error.response?.data || { error: "Error de conexión con el servidor" }
-  }
-
+  // Obtener la lista de dispositivos
   const fetchDispositivos = async () => {
     try {
       const response = await axios.get("http://127.0.0.1:8000/api/dispositivos/")
       setDispositivos(response.data)
       applyFilters(response.data)
     } catch (error) {
-      const apiError = handleApiError(error)
-      setAlert({
-        show: true,
-        message: apiError.error || "Error al obtener dispositivos",
-        type: "error"
-      })
+      console.error("Error al obtener dispositivos:", error)
+      setDispositivos([])
+      setFilteredDispositivos([])
     }
   }
 
+  // Obtener las posiciones
   const fetchPosiciones = async () => {
     try {
       const response = await axios.get("http://127.0.0.1:8000/api/posiciones/")
       if (response.data && Array.isArray(response.data.results)) {
         setPosiciones(response.data.results)
       } else {
-        console.error("Formato de respuesta inesperado:", response.data)
+        console.error("La respuesta de posiciones no tiene el formato esperado:", response.data)
         setPosiciones([])
       }
     } catch (error) {
-      const apiError = handleApiError(error)
-      setAlert({
-        show: true,
-        message: apiError.error || "Error al obtener posiciones",
-        type: "error"
-      })
+      console.error("Error al obtener posiciones:", error)
+      setPosiciones([])
     }
   }
 
+  // Obtener las sedes
   const fetchSedes = async () => {
     try {
       const response = await axios.get("http://127.0.0.1:8000/api/sede/")
@@ -126,15 +104,12 @@ const Dispositivos = () => {
         setSedes([])
       }
     } catch (error) {
-      const apiError = handleApiError(error)
-      setAlert({
-        show: true,
-        message: apiError.error || "Error al obtener sedes",
-        type: "error"
-      })
+      console.error("Error al obtener sedes:", error)
+      setSedes([])
     }
   }
 
+  // Aplicar filtros a los dispositivos
   const applyFilters = (devicesData = dispositivos) => {
     let filtered = [...devicesData]
 
@@ -155,12 +130,14 @@ const Dispositivos = () => {
     setTotalPages(Math.ceil(filtered.length / itemsPerPage))
   }
 
+  // Obtener los dispositivos para la página actual
   const getCurrentPageItems = () => {
     const startIndex = (currentPage - 1) * itemsPerPage
     const endIndex = startIndex + itemsPerPage
     return filteredDispositivos.slice(startIndex, endIndex)
   }
 
+  // Calcular el rango de elementos mostrados
   const getItemRange = () => {
     const startItem = (currentPage - 1) * itemsPerPage + 1
     const endItem = Math.min(startItem + itemsPerPage - 1, filteredDispositivos.length)
@@ -168,30 +145,20 @@ const Dispositivos = () => {
   }
 
   const validateDevice = (device) => {
-    const errors = {}
-    
-    if (!device.modelo?.trim()) errors.modelo = "El modelo es obligatorio"
-    if (!device.serial?.trim()) errors.serial = "El serial es obligatorio"
-    if (!device.estado_propiedad?.trim()) errors.estado_propiedad = "El estado de propiedad es obligatorio"
-    
-    const validProcessors = ["I5_6500", "I5_7500", "I5_8400T", "I5_8500", "I5_10TH", "I5_11TH", "I5_12TH"]
-    if (!validProcessors.includes(device.procesador)) {
-      errors.procesador = "Procesador no válido"
-    }
-    
-    if (Object.keys(errors).length > 0) {
+    if (!device.modelo || !device.serial) {
       setAlert({
         show: true,
-        message: Object.values(errors).join(", "),
-        type: "error"
+        message: "El modelo y el serial son campos obligatorios.",
+        type: "error",
       })
       return false
     }
     return true
   }
 
+  // Crear un nuevo dispositivo
   const addDevice = async () => {
-    if (isSubmitting) return
+    if (isSubmitting) return // Evitar múltiples envíos
     if (!validateDevice(newDevice)) return
     
     setIsSubmitting(true)
@@ -202,93 +169,109 @@ const Dispositivos = () => {
       setNewDevice(initialDeviceState())
       setAlert({
         show: true,
-        message: "Dispositivo agregado exitosamente",
-        type: "success"
+        message: "Dispositivo agregado exitosamente.",
+        type: "success",
       })
     } catch (error) {
-      const apiError = handleApiError(error)
+      console.error("Error al agregar el dispositivo:", error)
       setAlert({
         show: true,
-        message: apiError.error || "Error al agregar dispositivo",
-        type: "error"
+        message: "Hubo un error al agregar el dispositivo.",
+        type: "error",
       })
     } finally {
       setIsSubmitting(false)
     }
   }
 
+  // Actualizar un dispositivo
   const updateDevice = async () => {
-    if (isSubmitting) return
+    if (isSubmitting) return // Evitar múltiples envíos
     if (!validateDevice(selectedDevice)) return
 
     setIsSubmitting(true)
     try {
-      const cleanDeviceData = { 
-        ...selectedDevice,
-        posicion: selectedDevice.posicion || null,
-        sede: selectedDevice.sede || null,
-        usuario_asignado: selectedDevice.usuario_asignado || null
+      // Clonar el dispositivo y limpiar los datos incorrectos
+      const cleanDeviceData = { ...selectedDevice }
+
+      if (!cleanDeviceData.posicion) {
+        delete cleanDeviceData.posicion // Eliminar si está vacío
+      } else if (typeof cleanDeviceData.posicion === 'string') {
+        cleanDeviceData.posicion = Number.parseInt(cleanDeviceData.posicion) // Asegurar número
       }
 
-      await axios.put(
-        `http://127.0.0.1:8000/api/dispositivos/${selectedDevice.id}/`,
-        cleanDeviceData
-      )
-      
-      await fetchDispositivos()
+      if (!cleanDeviceData.sede) {
+        delete cleanDeviceData.sede // Eliminar si está vacío
+      } else if (typeof cleanDeviceData.sede === 'string') {
+        cleanDeviceData.sede = Number.parseInt(cleanDeviceData.sede) // Asegurar número
+      }
+
+      console.log("Enviando datos corregidos:", cleanDeviceData)
+
+      await axios.put(`http://127.0.0.1:8000/api/dispositivos/${selectedDevice.id}/`, cleanDeviceData)
+      await fetchDispositivos() // Esperar a que se actualice la lista
       setShowDetailModal(false)
       setAlert({
         show: true,
-        message: "Dispositivo actualizado exitosamente",
-        type: "success"
+        message: "Dispositivo actualizado exitosamente.",
+        type: "success",
       })
     } catch (error) {
-      const apiError = handleApiError(error)
+      console.error("Error al actualizar el dispositivo:", error.response?.data || error)
       setAlert({
         show: true,
-        message: apiError.error || "Error al actualizar dispositivo",
-        type: "error"
+        message: "Hubo un error al actualizar el dispositivo.",
+        type: "error",
       })
     } finally {
       setIsSubmitting(false)
     }
   }
 
+  // Eliminar un dispositivo
   const deleteDevice = async (deviceId) => {
-    if (isSubmitting) return
+    if (isSubmitting) return // Evitar múltiples envíos
     
     setIsSubmitting(true)
     try {
       await axios.delete(`http://127.0.0.1:8000/api/dispositivos/${deviceId}/`)
-      await fetchDispositivos()
+      await fetchDispositivos() // Esperar a que se actualice la lista
       setAlert({
         show: true,
-        message: "Dispositivo eliminado exitosamente",
-        type: "success"
+        message: "Dispositivo eliminado exitosamente.",
+        type: "success",
       })
     } catch (error) {
-      const apiError = handleApiError(error)
+      console.error("Error al eliminar el dispositivo:", error)
       setAlert({
         show: true,
-        message: apiError.error || "Error al eliminar dispositivo",
-        type: "error"
+        message: "Hubo un error al eliminar el dispositivo.",
+        type: "error",
       })
     } finally {
       setIsSubmitting(false)
     }
   }
 
+  // Obtener el ícono según el tipo de dispositivo
   const getDeviceIcon = (tipo) => {
     switch (tipo) {
-      case "COMPUTADOR": return <FaLaptop />
-      case "DESKTOP": return <FaArchive />
-      case "MONITOR": return <FaDesktop />
-      case "TABLET": return <FaTabletAlt />
-      case "MOVIL": return <FaMobileAlt />
-      default: return <FaServer />
+      case "COMPUTADOR":
+        return <FaLaptop />
+      case "DESKTOP":
+        return <FaArchive />
+      case "MONITOR":
+        return <FaDesktop />
+      case "TABLET":
+        return <FaTabletAlt />
+      case "MOVIL":
+        return <FaMobileAlt />
+      default:
+        return <FaServer />
     }
   }
 
+  // Efecto para cargar datos iniciales
   useEffect(() => {
     const fetchData = async () => {
       await fetchDispositivos()
@@ -298,20 +281,23 @@ const Dispositivos = () => {
     fetchData()
   }, [])
 
+  // Efecto para aplicar filtros cuando cambia el término de búsqueda
   useEffect(() => {
     applyFilters()
-    setCurrentPage(1)
+    setCurrentPage(1) // Resetear a la primera página cuando cambia la búsqueda
   }, [searchTerm])
 
+  // Efecto para cerrar la alerta automáticamente después de 1 segundo
   useEffect(() => {
     if (alert.show) {
       const timer = setTimeout(() => {
         setAlert({ ...alert, show: false })
-      }, 3000)
-      return () => clearTimeout(timer)
+      }, 1000) // Cerrar la alerta después de 1 segundo
+      return () => clearTimeout(timer) // Limpiar el timer si el componente se desmonta
     }
   }, [alert])
 
+  // Manejador para cerrar el modal cuando se hace clic fuera de él
   const handleOverlayClick = (e) => {
     if (e.target === e.currentTarget) {
       setShowDetailModal(false)
@@ -319,6 +305,7 @@ const Dispositivos = () => {
     }
   }
 
+  // Componente de alerta
   const AlertModal = ({ message, type, onClose }) => {
     return (
       <div className="modal-overlay">
@@ -344,14 +331,12 @@ const Dispositivos = () => {
           </button>
         </div>
 
+        {/* Mensajes de alerta */}
         {alert.show && (
-          <AlertModal 
-            message={alert.message} 
-            type={alert.type} 
-            onClose={() => setAlert({ ...alert, show: false })} 
-          />
+          <AlertModal message={alert.message} type={alert.type} onClose={() => setAlert({ ...alert, show: false })} />
         )}
 
+        {/* Buscador */}
         <div className="search-container">
           <div className="search-input-container">
             <FaSearch className="search-icon" />
@@ -365,6 +350,7 @@ const Dispositivos = () => {
           </div>
         </div>
 
+        {/* Lista de dispositivos */}
         <DeviceList
           dispositivos={getCurrentPageItems()}
           setSelectedDevice={setSelectedDevice}
@@ -374,6 +360,7 @@ const Dispositivos = () => {
           isSubmitting={isSubmitting}
         />
 
+        {/* Paginación */}
         {filteredDispositivos.length > 0 && (
           <div className="pagination-container">
             <div className="pagination-info">{getItemRange()}</div>
@@ -382,6 +369,7 @@ const Dispositivos = () => {
                 onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
                 disabled={currentPage === 1}
                 className="pagination-arrow"
+                aria-label="Página anterior"
               >
                 <FaChevronLeft />
               </button>
@@ -389,13 +377,18 @@ const Dispositivos = () => {
                 onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
                 disabled={currentPage === totalPages || totalPages === 0}
                 className="pagination-arrow"
+                aria-label="Página siguiente"
               >
                 <FaChevronRight />
               </button>
             </div>
+            <div className="pagination-progress-bar">
+              <div className="pagination-progress" style={{ width: `${(currentPage / totalPages) * 100}%` }}></div>
+            </div>
           </div>
         )}
 
+        {/* Modal para agregar dispositivo */}
         {showForm && (
           <div className="modal-overlay" onClick={handleOverlayClick}>
             <div className="modal-container modern-modal" onClick={(e) => e.stopPropagation()}>
@@ -417,6 +410,7 @@ const Dispositivos = () => {
           </div>
         )}
 
+        {/* Modal para editar dispositivo */}
         {showDetailModal && selectedDevice && (
           <div className="modal-overlay" onClick={handleOverlayClick}>
             <div className="modal-container modern-modal" onClick={(e) => e.stopPropagation()}>
@@ -442,6 +436,7 @@ const Dispositivos = () => {
   )
 }
 
+// Componente para la lista de dispositivos
 const DeviceList = ({ dispositivos, setSelectedDevice, setShowDetailModal, deleteDevice, getDeviceIcon, isSubmitting }) => (
   <div className="user-list">
     {dispositivos.length > 0 ? (
@@ -487,52 +482,12 @@ const DeviceList = ({ dispositivos, setSelectedDevice, setShowDetailModal, delet
   </div>
 )
 
+// Componente para el formulario de dispositivos
 const DeviceForm = ({ device, setDevice, onSubmit, posiciones, sedes, isSubmitting }) => {
-  const procesadoresOptions = [
-    { value: "AMD_A12", label: "AMD A12" },
-    { value: "AMD_A8_5500B", label: "AMD A8-5500B APU" },
-    { value: "AMD_RYZEN", label: "AMD RYZEN" },
-    { value: "AMD_RYZEN_3_2200GE", label: "AMD Ryzen 3 2200GE" },
-    { value: "I3_2100", label: "Intel Core i3 2100" },
-    { value: "I3_6200U", label: "Intel Core i3 6200U" },
-    { value: "I5_4430S", label: "Intel Core i5 4430s" },
-    { value: "I5_4460", label: "Intel Core i5 4460" },
-    { value: "I5_4590", label: "Intel Core i5 4590" },
-    { value: "I5_4600", label: "Intel Core i5 4600" },
-    { value: "I5_4670", label: "Intel Core i5 4670" },
-    { value: "I5_4750", label: "Intel Core i5 4750" },
-    { value: "I5_6500", label: "Intel Core i5 6500" },
-    { value: "I5_6500T", label: "Intel Core i5 6500T" },
-    { value: "I5_7500", label: "Intel Core i5 7500" },
-    { value: "I5_8400T", label: "Intel Core i5 8400T" },
-    { value: "I5_8500", label: "Intel Core i5 8500" },
-    { value: "I5_10TH", label: "Intel Core i5 10th Gen" },
-    { value: "I5_11TH", label: "Intel Core i5 11th Gen" },
-    { value: "I5_12TH", label: "Intel Core i5 12th Gen" },
-    { value: "I7_8TH", label: "Intel Core i7 8th Gen" },
-    { value: "I7_12TH", label: "Intel Core i7 12th Gen" },
-    { value: "I7_13TH", label: "Intel Core i7 13th Gen" },
-    { value: "I7_7TH", label: "Intel Core i7 7th Gen" },
-    { value: "I7_8565U", label: "Intel Core i7 8565U @ 1.80GHz" },
-    { value: "CORE_2_DUO_E7400", label: "Intel Core 2 Duo E7400" },
-    { value: "CORE_2_DUO_E7500", label: "Intel Core 2 Duo E7500" },
-  ]
-
-  const estadosPropiedadOptions = [
-    { value: "PROPIO", label: "Propio" },
-    { value: "ARRENDADO", label: "Arrendado" },
-    { value: "DONADO", label: "Donado" },
-    { value: "OTRO", label: "Otro" }
-  ]
-
-  const estadosUsoOptions = [
-    { value: "DISPONIBLE", label: "Disponible" },
-    { value: "EN_USO", label: "En uso" },
-    { value: "INHABILITADO", label: "Inhabilitado" }
-  ]
+  if (!device) return null
 
   const handleSubmit = (e) => {
-    e.preventDefault()
+    e.preventDefault() // Prevenir el comportamiento por defecto del formulario
     onSubmit()
   }
 
@@ -541,7 +496,6 @@ const DeviceForm = ({ device, setDevice, onSubmit, posiciones, sedes, isSubmitti
       {renderInput("Modelo", "modelo", device, setDevice)}
       {renderInput("Serial", "serial", device, setDevice)}
       {renderInput("Placa CU", "placa_cu", device, setDevice)}
-      
       {renderSelect("Tipo", "tipo", device, setDevice, [
         { value: "COMPUTADOR", label: "Computador" },
         { value: "DESKTOP", label: "Desktop" },
@@ -549,7 +503,6 @@ const DeviceForm = ({ device, setDevice, onSubmit, posiciones, sedes, isSubmitti
         { value: "TABLET", label: "Tablet" },
         { value: "MOVIL", label: "Celular" },
       ])}
-      
       {renderSelect("Sistema Operativo", "sistema_operativo", device, setDevice, [
         { value: "NA", label: "No Aplica" },
         { value: "SERVER", label: "Server" },
@@ -557,12 +510,9 @@ const DeviceForm = ({ device, setDevice, onSubmit, posiciones, sedes, isSubmitti
         { value: "WIN11", label: "Windows 11" },
         { value: "WIN7", label: "Windows 7" },
         { value: "VACIO", label: "Sin Sistema Operativo" },
-        { value: "MACOS", label: "MacOS" },
       ])}
-      
-      {renderSelect("Procesador", "procesador", device, setDevice, procesadoresOptions)}
+      {renderInput("Procesador", "procesador", device, setDevice)}
       {renderInput("Proveedor", "proveedor", device, setDevice)}
-      
       {renderSelect("Marca", "marca", device, setDevice, [
         { value: "DELL", label: "Dell" },
         { value: "HP", label: "HP" },
@@ -570,7 +520,6 @@ const DeviceForm = ({ device, setDevice, onSubmit, posiciones, sedes, isSubmitti
         { value: "APPLE", label: "Apple" },
         { value: "SAMSUNG", label: "Samsung" },
       ])}
-      
       {renderSelect("Estado", "estado", device, setDevice, [
         { value: "REPARAR", label: "En reparación" },
         { value: "BUENO", label: "Buen estado" },
@@ -578,22 +527,16 @@ const DeviceForm = ({ device, setDevice, onSubmit, posiciones, sedes, isSubmitti
         { value: "COMPRADO", label: "Comprado" },
         { value: "MALO", label: "Mal estado" },
       ])}
-      
-      {renderSelect("Estado de Propiedad", "estado_propiedad", device, setDevice, estadosPropiedadOptions)}
-      {renderSelect("Disponibilidad", "disponible", device, setDevice, estadosUsoOptions)}
-      
       {renderSelect("Regimen", "regimen", device, setDevice, [
         { value: "ECCC", label: "ECCC" },
         { value: "ECOL", label: "ECOL" },
         { value: "CNC", label: "CNC" },
       ])}
-      
       {renderSelect("Tipo de Disco Duro", "tipo_disco_duro", device, setDevice, [
         { value: "HDD", label: "HDD (Disco Duro Mecánico)" },
         { value: "SSD", label: "SSD (Disco de Estado Sólido)" },
         { value: "HYBRID", label: "Híbrido (HDD + SSD)" },
       ])}
-      
       {renderSelect("Capacidad de Disco Duro", "capacidad_disco_duro", device, setDevice, [
         { value: "120GB", label: "120 GB" },
         { value: "250GB", label: "250 GB" },
@@ -603,7 +546,6 @@ const DeviceForm = ({ device, setDevice, onSubmit, posiciones, sedes, isSubmitti
         { value: "4TB", label: "4 TB" },
         { value: "8TB", label: "8 TB" },
       ])}
-      
       {renderSelect("Tipo de Memoria RAM", "tipo_memoria_ram", device, setDevice, [
         { value: "DDR", label: "DDR" },
         { value: "DDR2", label: "DDR2" },
@@ -612,7 +554,6 @@ const DeviceForm = ({ device, setDevice, onSubmit, posiciones, sedes, isSubmitti
         { value: "LPDDR4", label: "LPDDR4" },
         { value: "LPDDR5", label: "LPDDR5" },
       ])}
-      
       {renderSelect("Capacidad de Memoria RAM", "capacidad_memoria_ram", device, setDevice, [
         { value: "2GB", label: "2 GB" },
         { value: "4GB", label: "4 GB" },
@@ -621,22 +562,34 @@ const DeviceForm = ({ device, setDevice, onSubmit, posiciones, sedes, isSubmitti
         { value: "32GB", label: "32 GB" },
         { value: "64GB", label: "64 GB" },
       ])}
-      
       {renderSelect("Ubicación", "ubicacion", device, setDevice, [
         { value: "CASA", label: "Casa" },
         { value: "CLIENTE", label: "Cliente" },
         { value: "SEDE", label: "Sede" },
         { value: "OTRO", label: "Otro" },
       ])}
-      
       {renderInput("Razón Social", "razon_social", device, setDevice)}
-      
-      {renderSelect("Posición", "posicion", device, setDevice, 
-        posiciones.map(pos => ({ value: pos.id, label: pos.nombre }))
+      {renderSelect(
+        "Posición",
+        "posicion",
+        device,
+        setDevice,
+        posiciones.map((pos) => ({
+          value: pos.id,
+          label: pos.nombre,
+        })),
       )}
-      
-      {renderSelect("Sede", "sede", device, setDevice, 
-        Array.isArray(sedes) ? sedes.map(sede => ({ value: sede.id, label: sede.nombre })) : []
+      {renderSelect(
+        "Sede",
+        "sede",
+        device,
+        setDevice,
+        Array.isArray(sedes)
+          ? sedes.map((sede) => ({
+              value: sede.id,
+              label: sede.nombre,
+            }))
+          : [],
       )}
 
       <button 
@@ -650,6 +603,7 @@ const DeviceForm = ({ device, setDevice, onSubmit, posiciones, sedes, isSubmitti
   )
 }
 
+// Función para renderizar un input
 const renderInput = (label, field, device, setDevice) => (
   <div className="input-group">
     <label>{label}</label>
@@ -662,13 +616,11 @@ const renderInput = (label, field, device, setDevice) => (
   </div>
 )
 
+// Función para renderizar un select
 const renderSelect = (label, field, device, setDevice, options) => (
   <div className="input-group">
     <label>{label}</label>
-    <select 
-      value={device[field] || ""} 
-      onChange={(e) => setDevice({ ...device, [field]: e.target.value || null })}
-    >
+    <select value={device[field] || ""} onChange={(e) => setDevice({ ...device, [field]: e.target.value || null })}>
       <option value="">Seleccione una opción</option>
       {options.map((opt) => (
         <option key={opt.value} value={opt.value}>
