@@ -18,7 +18,7 @@ class Sede(models.Model):
 
     def __str__(self):
         return f"{self.nombre} - {self.ciudad}"
-
+    
     class Meta:
         verbose_name = "Sede"
         verbose_name_plural = "Sedes"
@@ -105,8 +105,7 @@ class Servicios(models.Model):
     color = ColorField(default="#FFFFFF")  # Campo de color con selector en Django Admin
 
     def __str__(self):
-        return self.nombre
-
+        return f"{self.nombre} ({self.codigo_analitico})"
     class Meta:
         verbose_name = "Servicios"
         verbose_name_plural = "Servicios"
@@ -137,8 +136,8 @@ class Posicion(models.Model):
     dispositivos = models.ManyToManyField('Dispositivo', related_name='posiciones', blank=True)
     mergedCells = models.JSONField(default=list)  # Corregido: JSONField en lugar de lista
 
-    def _str_(self):
-        return f"{self.nombre} ({self.fila}{self.columna})"
+    def __str__(self):
+        return f"{self.nombre} - Piso {self.piso}"
 
     def clean(self):
         if self.fila < 1:
@@ -147,7 +146,11 @@ class Posicion(models.Model):
             raise ValueError("La columna debe contener solo letras.")
 
     def save(self, *args, **kwargs):
-        self.clean()
+        # Asegurar que los campos JSON sean serializables
+        if not isinstance(self.bordeDetalle, dict):
+            self.bordeDetalle = {}
+        if not isinstance(self.mergedCells, list):
+            self.mergedCells = []
         super().save(*args, **kwargs)
 
 

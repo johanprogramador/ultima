@@ -75,20 +75,19 @@ class DispositivoSerializer(serializers.ModelSerializer):
     sede = serializers.PrimaryKeyRelatedField(queryset=Sede.objects.all(), required=False)
     nombre_sede = serializers.CharField(source='sede.nombre', read_only=True)
     posicion = serializers.PrimaryKeyRelatedField(queryset=Posicion.objects.all(), required=False)
+    nombre_posicion = serializers.CharField(source='posicion.nombre', read_only=True)
+    servicio = serializers.PrimaryKeyRelatedField(queryset=Servicios.objects.all(), required=False)
+    nombre_servicio = serializers.CharField(source='servicio.nombre', read_only=True)
     estado_propiedad = serializers.CharField(required=False, allow_blank=True)
     
-    # Agrega estos campos según tu relación
-    servicios = serializers.PrimaryKeyRelatedField(queryset=Servicios.objects.all(), required=False)
-    # O si es ManyToMany:
-    # servicios = serializers.PrimaryKeyRelatedField(many=True, queryset=Servicios.objects.all(), required=False)
-
     class Meta:
         model = Dispositivo
         fields = [
             'id', 'tipo', 'estado', 'marca', 'razon_social', 'regimen', 'modelo', 'serial',
-            'placa_cu', 'posicion', 'sede', 'nombre_sede', 'servicios',  # Añade 'servicios' aquí
-            'tipo_disco_duro', 'capacidad_disco_duro', 'tipo_memoria_ram', 'capacidad_memoria_ram',
-            'ubicacion', 'sistema_operativo', 'procesador', 'proveedor', 'estado_propiedad'
+            'placa_cu', 'posicion', 'nombre_posicion', 'sede', 'nombre_sede', 
+            'servicio', 'nombre_servicio', 'tipo_disco_duro', 'capacidad_disco_duro', 
+            'tipo_memoria_ram', 'capacidad_memoria_ram', 'ubicacion', 'sistema_operativo', 
+            'procesador', 'proveedor', 'estado_propiedad', 'disponible'
         ]
 
     def create(self, validated_data):

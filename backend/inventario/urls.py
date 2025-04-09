@@ -90,6 +90,9 @@ urlpatterns = [
     path('api/posiciones/colores-pisos/', views.get_colores_pisos, name='colores-pisos'),
     path('api/posiciones/import/', views.import_positions, name='import-positions'),
 
+
+
+    path('api/dispositivos-por-sede/', views.dispositivos_por_sede, name='dispositivos-por-sede'),
 ]
 
 

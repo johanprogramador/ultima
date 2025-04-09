@@ -65,9 +65,7 @@
 /* Ajustes para cada gráfica dentro del contenedor */
 .charts-row > * {
   flex: 1; /* Cada gráfica ocupa el mismo espacio */
-  background-color: #353a50; /* Fondo para las gráficas */
   border-radius: 10px; /* Bordes redondeados */
-  padding: 20px; /* Espaciado interno */
 }
 
 /* Si quieres mantener la estructura fija cuando agregues más elementos */

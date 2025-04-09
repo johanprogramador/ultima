@@ -946,3 +946,46 @@ def import_positions(request):
         "created": created_count,
         "errors": errors
     }, status=status.HTTP_200_OK if created_count > 0 else status.HTTP_400_BAD_REQUEST)
+    
+    
+    
+# views.py
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
+from django.db.models import Count
+from .models import Sede
+from django.views.decorators.csrf import csrf_exempt
+import logging
+
+logger = logging.getLogger(__name__)
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def dispositivos_por_sede(request):
+    """
+    Vista corregida que usa el nombre correcto de la relación
+    """
+    try:
+        # Consulta corregida - usando 'dispositivos' en lugar de 'dispositivo'
+        sedes_con_dispositivos = Sede.objects.annotate(
+            total_dispositivos=Count('dispositivos')  # ¡Cambio importante aquí!
+        ).values('nombre', 'total_dispositivos').order_by('nombre')
+
+        response = Response({
+            'success': True,
+            'data': list(sedes_con_dispositivos)
+        }, status=200)
+
+        # Configuración CORS
+        response["Access-Control-Allow-Origin"] = "http://localhost:3000"
+        response["Access-Control-Allow-Methods"] = "GET, OPTIONS"
+        
+        return response
+
+    except Exception as e:
+        logger.error(f"Error en dispositivos_por_sede: {str(e)}", exc_info=True)
+        return Response({
+            'success': False,
+            'error': "Error al procesar la solicitud"
+        }, status=500)
