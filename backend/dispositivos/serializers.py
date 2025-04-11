@@ -2,7 +2,7 @@ from rest_framework import serializers # type: ignore
 from django.contrib.auth import authenticate # type: ignore
 from django.contrib.auth.hashers import make_password # type: ignore
 from django.utils.translation import gettext_lazy as _
-from .models import RolUser, Sede, Dispositivo, Servicios, Posicion
+from .models import RolUser, Sede, Dispositivo, Servicios, Posicion, Historial
 
 
 
@@ -71,53 +71,183 @@ class PosicionSerializer(serializers.ModelSerializer):
 
 
 
+from rest_framework import serializers
+from .models import Dispositivo, Sede, Posicion
+
 class DispositivoSerializer(serializers.ModelSerializer):
-    sede = serializers.PrimaryKeyRelatedField(queryset=Sede.objects.all(), required=False)
-    nombre_sede = serializers.CharField(source='sede.nombre', read_only=True)
-    posicion = serializers.PrimaryKeyRelatedField(queryset=Posicion.objects.all(), required=False)
-    nombre_posicion = serializers.CharField(source='posicion.nombre', read_only=True)
-    servicio = serializers.PrimaryKeyRelatedField(queryset=Servicios.objects.all(), required=False)
-    nombre_servicio = serializers.CharField(source='servicio.nombre', read_only=True)
-    estado_propiedad = serializers.CharField(required=False, allow_blank=True)
-    
+    sede = serializers.PrimaryKeyRelatedField(
+        queryset=Sede.objects.all(), 
+        required=False,
+        allow_null=True,
+        error_messages={
+            'does_not_exist': 'La sede seleccionada no existe'
+        }
+    )
+    nombre_sede = serializers.SerializerMethodField()
+    posicion = serializers.PrimaryKeyRelatedField(
+        queryset=Posicion.objects.all(), 
+        required=False,
+        allow_null=True,
+        error_messages={
+            'does_not_exist': 'La posición seleccionada no existe'
+        }
+    )
+
+    # Campos display para choices
+    tipo_display = serializers.CharField(source='get_tipo_display', read_only=True)
+    estado_display = serializers.CharField(source='get_estado_display', read_only=True)
+    marca_display = serializers.CharField(source='get_marca_display', read_only=True)
+    sistema_operativo_display = serializers.CharField(source='get_sistema_operativo_display', read_only=True)
+    is_operativo = serializers.SerializerMethodField()
+
+    TIPOS_CON_REQUISITOS = ['COMPUTADOR', 'PORTATIL', 'DESKTOP', 'TODO_EN_UNO']
+    ESTADOS_INVALIDOS = ['MALO', 'PERDIDO_ROBADO', 'PENDIENTE_BAJA']
+
     class Meta:
         model = Dispositivo
         fields = [
-            'id', 'tipo', 'estado', 'marca', 'razon_social', 'regimen', 'modelo', 'serial',
-            'placa_cu', 'posicion', 'nombre_posicion', 'sede', 'nombre_sede', 
-            'servicio', 'nombre_servicio', 'tipo_disco_duro', 'capacidad_disco_duro', 
-            'tipo_memoria_ram', 'capacidad_memoria_ram', 'ubicacion', 'sistema_operativo', 
-            'procesador', 'proveedor', 'estado_propiedad', 'disponible'
+            'id', 'tipo', 'tipo_display', 'estado', 'estado_display', 'marca', 'marca_display',
+            'razon_social', 'regimen', 'modelo', 'serial', 'placa_cu', 'posicion', 
+            'sede', 'nombre_sede', 'piso', 'capacidad_disco_duro', 'capacidad_memoria_ram',
+            'ubicacion', 'sistema_operativo', 'sistema_operativo_display', 'procesador', 
+            'proveedor', 'estado_propiedad', 'estado_uso', 'observaciones',
+            'is_operativo'
         ]
+        extra_kwargs = {
+            'serial': {
+                'required': True,
+                'allow_blank': False,
+                'error_messages': {
+                    'required': 'El serial es obligatorio',
+                    'blank': 'El serial no puede estar vacío'
+                }
+            },
+            'modelo': {
+                'required': True, 
+                'allow_blank': False,
+                'error_messages': {
+                    'required': 'El modelo es obligatorio',
+                    'blank': 'El modelo no puede estar vacío'
+                }
+            },
+            'tipo': {
+                'required': True,
+                'error_messages': {
+                    'required': 'El tipo de dispositivo es obligatorio',
+                    'invalid_choice': 'Tipo de dispositivo no válido'
+                }
+            },
+            'marca': {
+                'required': True,
+                'error_messages': {
+                    'required': 'La marca es obligatoria',
+                    'invalid_choice': 'Marca no válida'
+                }
+            },
+            'estado': {
+                'required': True,
+                'error_messages': {
+                    'required': 'El estado es obligatorio',
+                    'invalid_choice': 'Estado no válido'
+                }
+            },
+            'placa_cu': {
+                'allow_blank': True,
+                'error_messages': {
+                    'unique': 'Esta placa CU ya está registrada'
+                }
+            },
+            'observaciones': {
+                'allow_blank': True,
+                'required': False
+            }
+        }
+
+    def get_nombre_sede(self, obj):
+        return obj.sede.nombre if obj.sede else None
+
+    def get_is_operativo(self, obj):
+        return obj.is_operativo()
+
+    def validate(self, data):
+        request = self.context.get('request')
+
+        # Validación de serial único (solo en creación)
+        if request and request.method == 'POST' and 'serial' in data:
+            if Dispositivo.objects.filter(serial=data['serial']).exists():
+                raise serializers.ValidationError({
+                    'serial': 'Ya existe un dispositivo con este serial'
+                })
+
+        # Validación de placa_cu único (si se proporciona)
+        if 'placa_cu' in data and data['placa_cu']:
+            queryset = Dispositivo.objects.filter(placa_cu=data['placa_cu'])
+            if self.instance:
+                queryset = queryset.exclude(pk=self.instance.pk)
+            if queryset.exists():
+                raise serializers.ValidationError({
+                    'placa_cu': 'Ya existe un dispositivo con esta placa CU'
+                })
+
+        # Validar coherencia entre sede y posición
+        if data.get('posicion') and not data.get('sede'):
+            raise serializers.ValidationError({
+                'sede': 'Debe especificar una sede si asigna una posición'
+            })
+        if data.get('posicion') and data.get('sede'):
+            if data['posicion'].sede != data['sede']:
+                raise serializers.ValidationError({
+                    'posicion': 'La posición no pertenece a la sede seleccionada'
+                })
+
+        # Validar campos requeridos según tipo de dispositivo
+        dispositivo_tipo = data.get('tipo', getattr(self.instance, 'tipo', None))
+
+        if dispositivo_tipo in self.TIPOS_CON_REQUISITOS:
+            required_fields = {
+                'capacidad_memoria_ram': 'Capacidad de RAM requerida para este dispositivo',
+                'sistema_operativo': 'Sistema operativo requerido para este dispositivo',
+                'procesador': 'Procesador requerido para este dispositivo'
+            }
+            for field, error_msg in required_fields.items():
+                if not data.get(field) and not getattr(self.instance, field, None):
+                    raise serializers.ValidationError({field: error_msg})
+
+        # Validar estado de uso coherente con estado del dispositivo
+        if data.get('estado') in self.ESTADOS_INVALIDOS:
+            if data.get('estado_uso') and data.get('estado_uso') != 'INHABILITADO':
+                raise serializers.ValidationError({
+                    'estado_uso': 'El estado de uso debe ser INHABILITADO cuando el estado del dispositivo es inválido.'
+                })
+            data['estado_uso'] = 'INHABILITADO'
+
+        return data
 
     def create(self, validated_data):
-        sede = validated_data.pop('sede', None)
-        posicion = validated_data.pop('posicion', None)
-        servicios = validated_data.pop('servicios', None)  # Añade esta línea
-
-        dispositivo = Dispositivo.objects.create(
-            **validated_data,
-            sede=Sede.objects.filter(id=sede.id).first() if sede else None,
-            posicion=Posicion.objects.filter(id=posicion.id).first() if posicion else None,
-            servicios=servicios  # Añade esta línea
-        )
-        return dispositivo
+        try:
+            if validated_data.get('posicion'):
+                validated_data['piso'] = validated_data['posicion'].piso
+            return super().create(validated_data)
+        except Exception as e:
+            raise serializers.ValidationError({
+                'non_field_errors': f'Error al crear el dispositivo: {str(e)}'
+            })
 
     def update(self, instance, validated_data):
-        sede = validated_data.pop('sede', None)
-        posicion = validated_data.pop('posicion', None)
-        servicios = validated_data.pop('servicios', None)  # Añade esta línea
+        try:
+            for attr, value in validated_data.items():
+                setattr(instance, attr, value)
 
-        instance.sede = Sede.objects.filter(id=sede.id).first() if sede else instance.sede
-        instance.posicion = Posicion.objects.filter(id=posicion.id).first() if posicion else instance.posicion
-        if servicios is not None:  # Añade este bloque
-            instance.servicios = servicios
+            if 'posicion' in validated_data:
+                instance.piso = validated_data['posicion'].piso if validated_data['posicion'] else None
 
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
+            instance.save()
+            return instance
+        except Exception as e:
+            raise serializers.ValidationError({
+                'non_field_errors': f'Error al actualizar el dispositivo: {str(e)}'
+            })
 
-        instance.save()
-        return instance
 class SedeSerializer(serializers.ModelSerializer):
     class Meta:
         model = Sede
@@ -167,3 +297,27 @@ class PosicionSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("La columna debe contener solo letras.")
 
         return data
+
+class HistorialSerializer(serializers.ModelSerializer):
+    dispositivo = DispositivoSerializer(read_only=True)
+    usuario = RolUserSerializer(read_only=True)
+    
+    tipo_cambio_display = serializers.CharField(source='get_tipo_cambio_display', read_only=True)
+    fecha_formateada = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Historial
+        fields = [
+            'id', 
+            'dispositivo', 
+            'usuario', 
+            'fecha_modificacion', 
+            'fecha_formateada',
+            'tipo_cambio', 
+            'tipo_cambio_display', 
+            'cambios'
+        ]
+    
+    def get_fecha_formateada(self, obj):
+        return obj.fecha_modificacion.strftime("%d/%m/%Y %H:%M")
+        

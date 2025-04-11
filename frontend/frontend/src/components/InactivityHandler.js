@@ -1,46 +1,56 @@
-import { useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import { useAuth } from "./auth"; // Importar el contexto de autenticación
+    import { useEffect } from 'react';
+    import api from '../services/api';
+    import { useAuth } from './auth';
 
-const InactivityHandler = () => {
-    const navigate = useNavigate();
-    const { setToken } = useAuth(); // Obtener la función para manejar el token
+    const InactivityHandler = () => {
+    const { token, logout } = useAuth();
 
     useEffect(() => {
-        let timeout;
+        if (!token) return;
+
+        let inactivityTimer;
+        const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
 
         const resetTimer = () => {
-            clearTimeout(timeout);
-            timeout = setTimeout(() => {
-                logoutUser();
-            }, 5 * 60 * 1000); // 5 minutos
+        clearTimeout(inactivityTimer);
+        inactivityTimer = setTimeout(() => {
+            logout();
+            window.location.href = '/login';
+        }, 1800000); // 30 minutos
         };
 
-        const logoutUser = () => {
-            console.log("Sesión cerrada por inactividad.");
-            sessionStorage.removeItem("token");  // Eliminar el token
-            setToken(null);  // Actualizar el estado de autenticación
-            navigate("/"); // Redirigir al login
+        const setupListeners = () => {
+        events.forEach(event => {
+            window.addEventListener(event, resetTimer);
+        });
+        resetTimer(); // Inicia el timer por primera vez
         };
 
-        // Detectar actividad del usuario
-        window.addEventListener("mousemove", resetTimer);
-        window.addEventListener("keypress", resetTimer);
-        window.addEventListener("scroll", resetTimer);
-        window.addEventListener("click", resetTimer);
+        const keepalive = async () => {
+        try {
+            await api.post('auth/keepalive/', {}, {
+            headers: { Authorization: `Bearer ${token}` }
+            });
+        } catch (error) {
+            console.error('Keepalive error:', error);
+            logout();
+            window.location.href = '/login';
+        }
+        };
 
-        resetTimer();  // Inicializa el temporizador
+        setupListeners();
+        const keepaliveInterval = setInterval(keepalive, 240000); // 4 minutos
 
         return () => {
-            clearTimeout(timeout);
-            window.removeEventListener("mousemove", resetTimer);
-            window.removeEventListener("keypress", resetTimer);
-            window.removeEventListener("scroll", resetTimer);
-            window.removeEventListener("click", resetTimer);
+        events.forEach(event => {
+            window.removeEventListener(event, resetTimer);
+        });
+        clearTimeout(inactivityTimer);
+        clearInterval(keepaliveInterval);
         };
-    }, [navigate, setToken]);
+    }, [token, logout]);
 
     return null;
-};
+    };
 
-export default InactivityHandler;
+    export default InactivityHandler;

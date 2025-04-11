@@ -7,6 +7,8 @@ import {
   Outlet,
   useLocation,
 } from "react-router-dom";
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
 // Importación de autenticación
 import { AuthProvider, useAuth } from "./components/auth";
@@ -59,6 +61,20 @@ function App() {
     <AuthProvider>
       <Router>
         <InactivityHandler /> {/* Manejo de sesión inactiva */}
+        {/* Configuración global de ToastContainer */}
+        <ToastContainer
+          position="top-right"
+          autoClose={5000}
+          hideProgressBar={false}
+          newestOnTop={false}
+          closeOnClick
+          rtl={false}
+          pauseOnFocusLoss
+          draggable
+          pauseOnHover
+          theme="colored"
+        />
+        
         <Routes>
           {/* Rutas públicas */}
           <Route path="/login" element={<RedirectIfAuthenticated />} />
@@ -80,8 +96,6 @@ function App() {
             <Route path="/devices" element={<Devices />} />
             <Route path="/planos" element={<Plans />} />
           </Route>
-
-
         </Routes>
       </Router>
     </AuthProvider>

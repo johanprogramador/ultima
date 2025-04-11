@@ -1,13 +1,17 @@
-    import React from 'react';
-    import '../styles/History.css';
-    const History = () => {
-        return (
-        <div>
-            <h1>Planes</h1>
-            {/* Resto del contenido */}
-        </div>
-        );
-    };
-    
-    export default History;
-    
+import "../styles/History.css"
+import Historial from "../components/Historial"
+
+// Asegúrate de personalizar este archivo CSS según tus necesidades
+
+const history = () => {
+  return (
+    <div className="dashboard-container">
+      <div>
+        <Historial />
+      </div>
+    </div>
+  )
+}
+
+export default history
+

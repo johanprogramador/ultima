@@ -25,7 +25,7 @@ const SedesExistentes = () => {
   // Estados para búsqueda y paginación
   const [searchTerm, setSearchTerm] = useState("")
   const [currentPage, setCurrentPage] = useState(1)
-  const [itemsPerPage, setItemsPerPage] = useState(6)
+  const [itemsPerPage] = useState(10)
   const [totalPages, setTotalPages] = useState(1)
 
   // Aplicar filtros a las sedes
@@ -188,7 +188,7 @@ const SedesExistentes = () => {
   useEffect(() => {
     applyFilters()
     setCurrentPage(1) // Resetear a la primera página cuando cambia la búsqueda
-  }, [searchTerm])
+  }, [])
 
   // Efecto para cerrar la alerta automáticamente después de 1 segundo
   useEffect(() => {

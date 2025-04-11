@@ -46,6 +46,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'colorfield',
     'django_extensions',
+    'django_filters',
     
 ]
 

@@ -1,13 +1,440 @@
-    /* Inventory.css */
+/* Reset and base styles */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
 
-    .Devices-container {
-        display: flex;
-        height: 100vh; /* Asegura que ocupe toda la altura de la pantalla */
-        width: 100vw; /* Asegura que ocupe toda la anchura de la pantalla */
-    }
-    
-    .Devices-content {
-        flex: 1; /* Esto hace que el contenido ocupe el resto del espacio */
-        background-color: #f4f4f4;
-    }
-    
+:root {
+  --primary: #6c63ff;
+  --primary-hover: #5b52ff;
+  --background: #2b2d42;
+  --surface: #1f2133;
+  --surface-hover: #2a2d42;
+  --border: #3d405b;
+  --text: #e9e9e9;
+  --text-secondary: #8d99ae;
+  --danger: #ff4757;
+  --danger-hover: #ff3344;
+  --success: #28a745;
+  --warning: #ffc107;
+  --radius-sm: 4px;
+  --radius: 8px;
+  --radius-lg: 12px;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.1);
+  --shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
+  --transition: 200ms ease;
+}
+
+/* Dashboard container */
+
+/* Layout */
+.container-plano {
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  line-height: 1.5;
+  color: var(--text);
+  background-color: var(--background);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Registro image container */
+
+/* Override Material-UI components with custom styles */
+
+/* Body and general styles */
+body {
+  background-color: var(--background);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Paper component */
+.MuiPaper-root {
+  background-color: var(--surface) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius) !important;
+  box-shadow: var(--shadow) !important;
+}
+
+/* Typography */
+.MuiTypography-root {
+  color: var(--text) !important;
+}
+
+.MuiTypography-h4 {
+  font-size: 1.875rem !important;
+  font-weight: 700 !important;
+  margin-bottom: 2rem !important;
+  letter-spacing: -0.025em !important;
+}
+
+/* Form controls */
+.MuiFormControl-root {
+  margin-bottom: 1rem !important;
+}
+
+.MuiInputLabel-root {
+  color: var(--text-secondary) !important;
+}
+
+.MuiInputLabel-root.Mui-focused {
+  color: var(--primary) !important;
+}
+
+.MuiInputBase-root {
+  background-color: var(--surface) !important;
+  border-radius: var(--radius-sm) !important;
+  color: var(--text) !important;
+}
+
+.MuiOutlinedInput-notchedOutline {
+  border-color: var(--border) !important;
+}
+
+.MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline {
+  border-color: var(--primary) !important;
+}
+
+.MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline {
+  border-color: var(--primary) !important;
+  border-width: 2px !important;
+}
+
+.MuiInputAdornment-root {
+  color: var(--text-secondary) !important;
+}
+
+/* Select */
+.MuiSelect-root {
+  background-color: var(--surface) !important;
+  color: var(--text) !important;
+}
+
+.MuiMenuItem-root {
+  color: var(--text) !important;
+}
+
+.MuiMenu-paper {
+  background-color: var(--surface) !important;
+}
+
+.MuiMenuItem-root:hover {
+  background-color: var(--surface-hover) !important;
+}
+
+/* Buttons */
+.MuiButton-root {
+  border-radius: var(--radius-sm) !important;
+  text-transform: none !important;
+  font-weight: 500 !important;
+  transition: all var(--transition) !important;
+}
+
+.MuiButton-contained {
+  background-color: var(--primary) !important;
+  color: white !important;
+}
+
+.MuiButton-contained:hover {
+  background-color: var(--primary-hover) !important;
+  transform: translateY(-1px) !important;
+}
+
+.MuiButton-outlined {
+  border-color: var(--border) !important;
+  color: var(--text) !important;
+}
+
+.MuiButton-outlined:hover {
+  background-color: var(--surface-hover) !important;
+}
+
+/* Table */
+.MuiTableContainer-root {
+  max-height: 70vh !important;
+  overflow: auto !important;
+}
+
+.MuiTable-root {
+  background-color: var(--surface) !important;
+}
+
+.MuiTableHead-root {
+  background-color: var(--surface) !important;
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 10 !important;
+}
+
+.MuiTableCell-head {
+  background-color: var(--surface) !important;
+  color: var(--text) !important;
+  font-weight: 600 !important;
+  border-bottom: 1px solid var(--border) !important;
+}
+
+.MuiTableCell-body {
+  color: var(--text) !important;
+  border-bottom: 1px solid var(--border) !important;
+}
+
+.MuiTableRow-root:hover {
+  background-color: var(--surface-hover) !important;
+}
+
+/* Chips for status */
+.MuiChip-root {
+  font-size: 0.75rem !important;
+  height: 24px !important;
+}
+
+.MuiChip-colorPrimary {
+  background-color: var(--primary) !important;
+}
+
+.MuiChip-colorSuccess {
+  background-color: var(--success) !important;
+}
+
+.MuiChip-colorWarning {
+  background-color: var(--warning) !important;
+}
+
+.MuiChip-colorDefault {
+  background-color: var(--text-secondary) !important;
+}
+
+/* Icons */
+.MuiSvgIcon-root {
+  color: var(--text) !important;
+}
+
+.MuiIconButton-root {
+  color: var(--text) !important;
+}
+
+.MuiIconButton-root:hover {
+  background-color: var(--surface-hover) !important;
+}
+
+/* Pagination */
+.MuiPagination-root {
+  margin-top: 1.5rem !important;
+}
+
+.MuiPaginationItem-root {
+  color: var(--text) !important;
+}
+
+.MuiPaginationItem-page.Mui-selected {
+  background-color: var(--primary) !important;
+  color: white !important;
+}
+
+/* Dialog/Modal */
+.MuiDialog-paper {
+  background-color: var(--surface) !important;
+  color: var(--text) !important;
+  border-radius: var(--radius) !important;
+  max-width: 600px !important;
+  width: 100% !important;
+}
+
+.MuiDialogTitle-root {
+  border-bottom: 1px solid var(--border) !important;
+  padding-bottom: 1rem !important;
+  font-size: 1.25rem !important;
+  font-weight: 600 !important;
+}
+
+.MuiDialogContent-root {
+  padding: 1.5rem !important;
+}
+
+.MuiDialogActions-root {
+  border-top: 1px solid var(--border) !important;
+  padding: 1rem 1.5rem !important;
+}
+
+/* Date picker */
+.MuiPickersDay-root {
+  color: var(--text) !important;
+}
+
+.MuiPickersDay-today {
+  border-color: var(--primary) !important;
+}
+
+.MuiPickersDay-daySelected {
+  background-color: var(--primary) !important;
+}
+
+.MuiCalendarPicker-root {
+  background-color: var(--surface) !important;
+  color: var(--text) !important;
+}
+
+.MuiPickersCalendarHeader-root {
+  color: var(--text) !important;
+}
+
+.MuiPickersDay-root {
+  color: var(--text) !important;
+}
+
+.MuiPickersDay-today {
+  border-color: var(--primary) !important;
+}
+
+.MuiPickersDay-daySelected {
+  background-color: var(--primary) !important;
+}
+
+.MuiPickersDay-dayDisabled {
+  color: var(--text-secondary) !important;
+}
+
+.MuiPickersToolbar-root {
+  background-color: var(--surface) !important;
+  color: var(--text) !important;
+}
+
+.MuiPickersToolbar-penIconButton {
+  color: var(--text) !important;
+}
+
+.MuiPickersToolbar-toolbarLandscape {
+  border-right: 1px solid var(--border) !important;
+}
+
+.MuiPickersToolbar-toolbarPortrait {
+  border-bottom: 1px solid var(--border) !important;
+}
+
+.MuiPickersToolbar-toolbarButton {
+  color: var(--text) !important;
+}
+
+.MuiPickersToolbar-toolbarButtonSelected {
+  color: var(--primary) !important;
+}
+
+/* Alert */
+.MuiAlert-root {
+  background-color: var(--surface) !important;
+  color: var(--text) !important;
+}
+
+.MuiAlert-standardError {
+  border-left: 4px solid var(--danger) !important;
+}
+
+/* Loading indicator */
+.MuiCircularProgress-root {
+  color: var(--primary) !important;
+}
+
+/* Custom styles for specific elements */
+.changes-paper {
+  background-color: var(--surface-hover) !important;
+  padding: 1rem !important;
+  border-radius: var(--radius-sm) !important;
+  margin-top: 0.5rem !important;
+}
+
+/* Status colors for text */
+.text-danger {
+  color: var(--danger) !important;
+}
+
+.text-success {
+  color: var(--success) !important;
+}
+
+/* Scrollbar styles */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--surface);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--primary);
+  border-radius: var(--radius);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--primary-hover);
+}
+
+/* Responsive adjustments */
+@media (max-width: 480px) {
+  .dashboard-container {
+    width: 100%;
+    margin-left: 0;
+    padding: 1rem;
+  }
+
+  .MuiButton-root {
+    width: 100% !important;
+    margin-bottom: 0.5rem !important;
+  }
+
+  .MuiDialog-paper {
+    padding: 1rem !important;
+  }
+}
+
+/* Fix for the Paper component in the dialog that shows changes */
+.MuiPaper-root.MuiPaper-elevation.MuiPaper-rounded {
+  background-color: var(--surface-hover) !important;
+}
+
+/* Override for the changes section */
+.MuiPaper-root.MuiPaper-elevation.MuiPaper-rounded span[style*="color: red"] {
+  color: var(--danger) !important;
+}
+
+.MuiPaper-root.MuiPaper-elevation.MuiPaper-rounded span[style*="color: green"] {
+  color: var(--success) !important;
+}
+
+/* Fix for small text in table cells */
+.MuiTableCell-body small[style*="color: #666"] {
+  color: var(--text-secondary) !important;
+}
+
+/* Fix for the date picker popup */
+.MuiPickersPopper-root .MuiPaper-root {
+  background-color: var(--surface) !important;
+  color: var(--text) !important;
+}
+
+.MuiPickersPopper-root .MuiIconButton-root {
+  color: var(--text) !important;
+}
+
+.MuiPickersPopper-root .MuiTypography-root {
+  color: var(--text) !important;
+}
+
+/* Fix for the select dropdown */
+.MuiPopover-root .MuiPaper-root {
+  background-color: var(--surface) !important;
+  color: var(--text) !important;
+}
+

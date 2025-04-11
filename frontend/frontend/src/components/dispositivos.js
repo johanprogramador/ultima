@@ -28,12 +28,12 @@ const Dispositivos = () => {
   const [selectedDevice, setSelectedDevice] = useState(null)
   const [posiciones, setPosiciones] = useState([])
   const [sedes, setSedes] = useState([])
+  const [usuarios, setUsuarios] = useState([])
   const [alert, setAlert] = useState({
     show: false,
     message: "",
-    type: "error", // Puede ser "error" o "success"
+    type: "error",
   })
-  const [isSubmitting, setIsSubmitting] = useState(false) // Estado para controlar envíos múltiples
 
   // Estados para búsqueda y paginación
   const [searchTerm, setSearchTerm] = useState("")
@@ -49,19 +49,22 @@ const Dispositivos = () => {
       modelo: "",
       serial: "",
       estado: "BUENO",
+      estado_uso: "DISPONIBLE",
       capacidad_memoria_ram: "8GB",
       capacidad_disco_duro: "500GB",
-      tipo_disco_duro: "HDD",
-      tipo_memoria_ram: "DDR4",
+      sistema_operativo: "WIN10",
+      procesador: "I5_8500",
       ubicacion: "SEDE",
-      razon_social: "",
-      regimen: "ECCC",
+      razon_social: "ECCC",
+      regimen: "",
       placa_cu: "",
-      posicion: null, // Clave foránea a Posicion
-      sede: null, // Clave foránea a Sede
-      procesador: "", // Agregado
-      sistema_operativo: "", // Agregado
+      piso: "",
+      estado_propiedad: "PROPIO",
       proveedor: "",
+      posicion: null,
+      sede: null,
+      usuario_asignado: null,
+      observaciones: "",
     }
   }
 
@@ -69,15 +72,28 @@ const Dispositivos = () => {
   const fetchDispositivos = async () => {
     try {
       const response = await axios.get("http://127.0.0.1:8000/api/dispositivos/")
-      setDispositivos(response.data)
-      applyFilters(response.data)
+      
+      let data = []
+      if (Array.isArray(response.data)) {
+        data = response.data
+      } else if (response.data?.data && Array.isArray(response.data.data)) {
+        data = response.data.data
+      } else if (response.data?.results && Array.isArray(response.data.results)) {
+        data = response.data.results
+      } else {
+        console.error("Formato inesperado en dispositivos:", response.data)
+        data = []
+      }
+  
+      setDispositivos(data)
+      applyFilters(data)
     } catch (error) {
       console.error("Error al obtener dispositivos:", error)
       setDispositivos([])
       setFilteredDispositivos([])
     }
   }
-
+  
   // Obtener las posiciones
   const fetchPosiciones = async () => {
     try {
@@ -109,9 +125,25 @@ const Dispositivos = () => {
     }
   }
 
+  // Obtener los usuarios
+  const fetchUsuarios = async () => {
+    try {
+      const response = await axios.get("http://127.0.0.1:8000/api/usuarios/")
+      if (response.data && Array.isArray(response.data)) {
+        setUsuarios(response.data)
+      } else {
+        setUsuarios([])
+      }
+    } catch (error) {
+      console.error("Error al obtener usuarios:", error)
+      setUsuarios([])
+    }
+  }
+
   // Aplicar filtros a los dispositivos
   const applyFilters = (devicesData = dispositivos) => {
-    let filtered = [...devicesData]
+    // Asegurarse de que devicesData es un array
+    let filtered = Array.isArray(devicesData) ? [...devicesData] : []
 
     if (searchTerm) {
       filtered = filtered.filter(
@@ -158,58 +190,84 @@ const Dispositivos = () => {
 
   // Crear un nuevo dispositivo
   const addDevice = async () => {
-    if (isSubmitting) return // Evitar múltiples envíos
     if (!validateDevice(newDevice)) return
     
-    setIsSubmitting(true)
     try {
-      await axios.post("http://127.0.0.1:8000/api/dispositivos/", newDevice)
-      fetchDispositivos()
-      setShowForm(false)
-      setNewDevice(initialDeviceState())
-      setAlert({
-        show: true,
-        message: "Dispositivo agregado exitosamente.",
-        type: "success",
+      // Limpiar datos antes de enviar
+      const deviceToSend = { ...newDevice }
+      
+      // Convertir IDs a números o eliminarlos si son null/undefined
+      deviceToSend.posicion = deviceToSend.posicion ? Number(deviceToSend.posicion) : null
+      deviceToSend.sede = deviceToSend.sede ? Number(deviceToSend.sede) : null
+      deviceToSend.usuario_asignado = deviceToSend.usuario_asignado ? Number(deviceToSend.usuario_asignado) : null
+      
+      // Eliminar campos vacíos
+      Object.keys(deviceToSend).forEach(key => {
+        if (deviceToSend[key] === "" || deviceToSend[key] === null) {
+          delete deviceToSend[key]
+        }
       })
+  
+      const response = await axios.post("http://127.0.0.1:8000/api/dispositivos/", deviceToSend)
+      
+      if (response.status === 201) {
+        fetchDispositivos()
+        setShowForm(false)
+        setNewDevice(initialDeviceState())
+        setAlert({
+          show: true,
+          message: "Dispositivo agregado exitosamente.",
+          type: "success",
+        })
+      }
     } catch (error) {
       console.error("Error al agregar el dispositivo:", error)
+      let errorMessage = "Hubo un error al agregar el dispositivo."
+      
+      if (error.response?.data) {
+        // Mostrar mensajes específicos del backend si existen
+        errorMessage = Object.values(error.response.data).flat().join(", ")
+      }
+      
       setAlert({
         show: true,
-        message: "Hubo un error al agregar el dispositivo.",
+        message: errorMessage,
         type: "error",
       })
-    } finally {
-      setIsSubmitting(false)
     }
   }
-
   // Actualizar un dispositivo
   const updateDevice = async () => {
-    if (isSubmitting) return // Evitar múltiples envíos
     if (!validateDevice(selectedDevice)) return
-
-    setIsSubmitting(true)
+  
     try {
       // Clonar el dispositivo y limpiar los datos incorrectos
       const cleanDeviceData = { ...selectedDevice }
-
+  
+      // Limpiar campos de relaciones si están vacíos
       if (!cleanDeviceData.posicion) {
-        delete cleanDeviceData.posicion // Eliminar si está vacío
-      } else if (typeof cleanDeviceData.posicion === 'string') {
-        cleanDeviceData.posicion = Number.parseInt(cleanDeviceData.posicion) // Asegurar número
+        delete cleanDeviceData.posicion
+      } else {
+        cleanDeviceData.posicion = Number.parseInt(cleanDeviceData.posicion)
       }
-
+  
       if (!cleanDeviceData.sede) {
-        delete cleanDeviceData.sede // Eliminar si está vacío
-      } else if (typeof cleanDeviceData.sede === 'string') {
-        cleanDeviceData.sede = Number.parseInt(cleanDeviceData.sede) // Asegurar número
+        delete cleanDeviceData.sede
+      } else {
+        cleanDeviceData.sede = Number.parseInt(cleanDeviceData.sede)
       }
-
-      console.log("Enviando datos corregidos:", cleanDeviceData)
-
+  
+      // Eliminar usuario_asignado si no es necesario en el backend
+      if (!cleanDeviceData.usuario_asignado) {
+        delete cleanDeviceData.usuario_asignado
+      } else {
+        cleanDeviceData.usuario_asignado = Number.parseInt(cleanDeviceData.usuario_asignado)
+        // O eliminar completamente si no es soportado
+        // delete cleanDeviceData.usuario_asignado
+      }
+  
       await axios.put(`http://127.0.0.1:8000/api/dispositivos/${selectedDevice.id}/`, cleanDeviceData)
-      await fetchDispositivos() // Esperar a que se actualice la lista
+      fetchDispositivos()
       setShowDetailModal(false)
       setAlert({
         show: true,
@@ -220,36 +278,41 @@ const Dispositivos = () => {
       console.error("Error al actualizar el dispositivo:", error.response?.data || error)
       setAlert({
         show: true,
-        message: "Hubo un error al actualizar el dispositivo.",
+        message: "Error al actualizar el dispositivo. Verifique los datos.",
         type: "error",
       })
-    } finally {
-      setIsSubmitting(false)
     }
   }
 
-  // Eliminar un dispositivo
   const deleteDevice = async (deviceId) => {
-    if (isSubmitting) return // Evitar múltiples envíos
-    
-    setIsSubmitting(true)
+    if (!window.confirm("¿Está seguro que desea eliminar este dispositivo?")) {
+      return
+    }
+  
     try {
-      await axios.delete(`http://127.0.0.1:8000/api/dispositivos/${deviceId}/`)
-      await fetchDispositivos() // Esperar a que se actualice la lista
-      setAlert({
-        show: true,
-        message: "Dispositivo eliminado exitosamente.",
-        type: "success",
-      })
+      const response = await axios.delete(`http://127.0.0.1:8000/api/dispositivos/${deviceId}/`)
+      
+      if (response.status === 204) {
+        fetchDispositivos()
+        setAlert({
+          show: true,
+          message: "Dispositivo eliminado exitosamente.",
+          type: "success",
+        })
+      }
     } catch (error) {
       console.error("Error al eliminar el dispositivo:", error)
+      
+      let errorMessage = "Hubo un error al eliminar el dispositivo."
+      if (error.response?.data?.detail) {
+        errorMessage = error.response.data.detail
+      }
+      
       setAlert({
         show: true,
-        message: "Hubo un error al eliminar el dispositivo.",
+        message: errorMessage,
         type: "error",
       })
-    } finally {
-      setIsSubmitting(false)
     }
   }
 
@@ -266,6 +329,12 @@ const Dispositivos = () => {
         return <FaTabletAlt />
       case "MOVIL":
         return <FaMobileAlt />
+      case "HP_PRODISPLAY_P201":
+        return <FaDesktop />
+      case "PORTATIL":
+        return <FaLaptop />
+      case "TODO_EN_UNO":
+        return <FaDesktop />
       default:
         return <FaServer />
     }
@@ -277,6 +346,7 @@ const Dispositivos = () => {
       await fetchDispositivos()
       await fetchPosiciones()
       await fetchSedes()
+      await fetchUsuarios()
     }
     fetchData()
   }, [])
@@ -284,16 +354,16 @@ const Dispositivos = () => {
   // Efecto para aplicar filtros cuando cambia el término de búsqueda
   useEffect(() => {
     applyFilters()
-    setCurrentPage(1) // Resetear a la primera página cuando cambia la búsqueda
+    setCurrentPage(1)
   }, [searchTerm])
 
-  // Efecto para cerrar la alerta automáticamente después de 1 segundo
+  // Efecto para cerrar la alerta automáticamente
   useEffect(() => {
     if (alert.show) {
       const timer = setTimeout(() => {
         setAlert({ ...alert, show: false })
-      }, 1000) // Cerrar la alerta después de 1 segundo
-      return () => clearTimeout(timer) // Limpiar el timer si el componente se desmonta
+      }, 3000)
+      return () => clearTimeout(timer)
     }
   }, [alert])
 
@@ -322,7 +392,7 @@ const Dispositivos = () => {
   }
 
   return (
-    <div>
+    <div className="devices-container">
       <div className="user-card">
         <div className="card-header">
           <h2>Gestión de Dispositivos</h2>
@@ -357,7 +427,6 @@ const Dispositivos = () => {
           setShowDetailModal={setShowDetailModal}
           deleteDevice={deleteDevice}
           getDeviceIcon={getDeviceIcon}
-          isSubmitting={isSubmitting}
         />
 
         {/* Paginación */}
@@ -382,9 +451,6 @@ const Dispositivos = () => {
                 <FaChevronRight />
               </button>
             </div>
-            <div className="pagination-progress-bar">
-              <div className="pagination-progress" style={{ width: `${(currentPage / totalPages) * 100}%` }}></div>
-            </div>
           </div>
         )}
 
@@ -403,7 +469,7 @@ const Dispositivos = () => {
                   onSubmit={addDevice}
                   posiciones={posiciones}
                   sedes={sedes}
-                  isSubmitting={isSubmitting}
+                  usuarios={usuarios}
                 />
               </div>
             </div>
@@ -425,7 +491,7 @@ const Dispositivos = () => {
                   onSubmit={updateDevice}
                   posiciones={posiciones}
                   sedes={sedes}
-                  isSubmitting={isSubmitting}
+                  usuarios={usuarios}
                 />
               </div>
             </div>
@@ -437,7 +503,7 @@ const Dispositivos = () => {
 }
 
 // Componente para la lista de dispositivos
-const DeviceList = ({ dispositivos, setSelectedDevice, setShowDetailModal, deleteDevice, getDeviceIcon, isSubmitting }) => (
+const DeviceList = ({ dispositivos, setSelectedDevice, setShowDetailModal, deleteDevice, getDeviceIcon }) => (
   <div className="user-list">
     {dispositivos.length > 0 ? (
       dispositivos.map((device) => (
@@ -454,6 +520,10 @@ const DeviceList = ({ dispositivos, setSelectedDevice, setShowDetailModal, delet
               {device.tipo} - {device.marca} {device.modelo}
             </div>
             <div className="user-access">Serial: {device.serial}</div>
+            <div className="user-details">
+              <span>Estado: {device.estado}  </span>
+              {device.placa_cu && <span>  Placa: {device.placa_cu}</span>}
+            </div>
           </div>
           <div className="user-actions">
             <button
@@ -462,144 +532,217 @@ const DeviceList = ({ dispositivos, setSelectedDevice, setShowDetailModal, delet
                 setSelectedDevice(device)
                 setShowDetailModal(true)
               }}
-              disabled={isSubmitting}
             >
               <FaEdit />
             </button>
-            <button 
-              className="action-button-modern delete" 
-              onClick={() => deleteDevice(device.id)}
-              disabled={isSubmitting}
-            >
+            <button className="action-button-modern delete" onClick={() => deleteDevice(device.id)}>
               <FaTrash />
             </button>
           </div>
         </div>
       ))
     ) : (
-      <p>No hay dispositivos disponibles.</p>
+      <p className="no-results">No hay dispositivos disponibles.</p>
     )}
   </div>
 )
 
 // Componente para el formulario de dispositivos
-const DeviceForm = ({ device, setDevice, onSubmit, posiciones, sedes, isSubmitting }) => {
+const DeviceForm = ({ device, setDevice, onSubmit, posiciones, sedes, usuarios }) => {
   if (!device) return null
 
-  const handleSubmit = (e) => {
-    e.preventDefault() // Prevenir el comportamiento por defecto del formulario
-    onSubmit()
-  }
+  // Opciones para los selects según el modelo Django
+  const tiposDispositivos = [
+    { value: "COMPUTADOR", label: "Computador" },
+    { value: "DESKTOP", label: "Desktop" },
+    { value: "MONITOR", label: "Monitor" },
+    { value: "TABLET", label: "Tablet" },
+    { value: "MOVIL", label: "Celular" },
+    { value: "HP_PRODISPLAY_P201", label: "HP ProDisplay P201" },
+    { value: "PORTATIL", label: "Portátil" },
+    { value: "TODO_EN_UNO", label: "Todo en uno" },
+  ]
+
+  const fabricantes = [
+    { value: "DELL", label: "Dell" },
+    { value: "HP", label: "HP" },
+    { value: "LENOVO", label: "Lenovo" },
+    { value: "APPLE", label: "Apple" },
+    { value: "SAMSUNG", label: "Samsung" },
+  ]
+
+  const estadosDispositivo = [
+    { value: "BUENO", label: "Bueno" },
+    { value: "BODEGA_CN", label: "Bodega CN" },
+    { value: "BODEGA", label: "Bodega" },
+    { value: "MALA", label: "Mala" },
+    { value: "MALO", label: "Malo" },
+    { value: "PENDIENTE_BAJA", label: "Pendiente/Baja" },
+    { value: "PERDIDO_ROBADO", label: "Perdido/Robado" },
+    { value: "REPARAR", label: "Reparar" },
+    { value: "REPARAR_BAJA", label: "Reparar/Baja" },
+    { value: "SEDE", label: "Sede" },
+    { value: "STOCK", label: "Stock" },
+  ]
+
+  const estadosUso = [
+    { value: "DISPONIBLE", label: "Disponible" },
+    { value: "EN_USO", label: "En uso" },
+    { value: "INHABILITADO", label: "Inhabilitado" },
+  ]
+
+  const razonesSociales = [
+    { value: "ECCC", label: "ECCC" },
+    { value: "ECOL", label: "ECOL" },
+    { value: "CNC", label: "CNC" },
+    { value: "BODEGA_CN", label: "Bodega CN" },
+    { value: "COMPRADO", label: "Comprado" },
+    { value: "PROPIO", label: "Propio" },
+  ]
+
+  const sistemasOperativos = [
+    { value: "NA", label: "No Aplica" },
+    { value: "SERVER", label: "Server" },
+    { value: "WIN10", label: "Windows 10" },
+    { value: "WIN11", label: "Windows 11" },
+    { value: "WIN7", label: "Windows 7" },
+    { value: "VACIO", label: "Sin Sistema Operativo" },
+    { value: "MACOS", label: "MacOS" },
+  ]
+
+  const procesadores = [
+    { value: "AMD_A12", label: "AMD A12" },
+    { value: "AMD_A8_5500B", label: "AMD A8-5500B APU" },
+    { value: "AMD_RYZEN", label: "AMD RYZEN" },
+    { value: "AMD_RYZEN_3_2200GE", label: "AMD Ryzen 3 2200GE" },
+    { value: "I3_6200U", label: "Intel Core i3 6200U" },
+    { value: "I5_4430S", label: "Intel Core i5 4430s" },
+    { value: "I5_4460", label: "Intel Core i5 4460" },
+    { value: "I5_4590", label: "Intel Core i5 4590" },
+    { value: "I5_4600", label: "Intel Core i5 4600" },
+    { value: "I5_4670", label: "Intel Core i5 4670" },
+    { value: "I5_4750", label: "Intel Core i5 4750" },
+    { value: "I5_6500", label: "Intel Core i5 6500" },
+    { value: "I5_6500T", label: "Intel Core i5 6500T" },
+    { value: "I5_7500", label: "Intel Core i5 7500" },
+    { value: "I5_8400T", label: "Intel Core i5 8400T" },
+    { value: "I5_8500", label: "Intel Core i5 8500" },
+    { value: "I5_10TH", label: "Intel Core i5 10th Gen" },
+    { value: "I5_11TH", label: "Intel Core i5 11th Gen" },
+    { value: "I5_12TH", label: "Intel Core i5 12th Gen" },
+    { value: "I7_8TH", label: "Intel Core i7 8th Gen" },
+    { value: "I7_12TH", label: "Intel Core i7 12th Gen" },
+    { value: "I7_13TH", label: "Intel Core i7 13th Gen" },
+    { value: "I7_7TH", label: "Intel Core i7 7th Gen" },
+    { value: "I7_8565U", label: "Intel Core i7 8565U @ 1.80GHz" },
+  ]
+
+  const ubicaciones = [
+    { value: "CASA", label: "Casa" },
+    { value: "CLIENTE", label: "Cliente" },
+    { value: "SEDE", label: "Sede" },
+    { value: "OTRO", label: "Otro" },
+  ]
+
+  const estadosPropiedad = [
+    { value: "PROPIO", label: "Propio" },
+    { value: "ARRENDADO", label: "Arrendado" },
+    { value: "DONADO", label: "Donado" },
+    { value: "OTRO", label: "Otro" },
+  ]
+
+  const capacidadesDiscoDuro = [
+    { value: "120GB", label: "120 GB" },
+    { value: "250GB", label: "250 GB" },
+    { value: "500GB", label: "500 GB" },
+    { value: "1TB", label: "1 TB" },
+    { value: "2TB", label: "2 TB" },
+    { value: "4TB", label: "4 TB" },
+    { value: "8TB", label: "8 TB" },
+  ]
+
+  const capacidadesMemoriaRam = [
+    { value: "2GB", label: "2 GB" },
+    { value: "4GB", label: "4 GB" },
+    { value: "8GB", label: "8 GB" },
+    { value: "16GB", label: "16 GB" },
+    { value: "32GB", label: "32 GB" },
+    { value: "64GB", label: "64 GB" },
+  ]
 
   return (
-    <form onSubmit={handleSubmit}>
-      {renderInput("Modelo", "modelo", device, setDevice)}
-      {renderInput("Serial", "serial", device, setDevice)}
-      {renderInput("Placa CU", "placa_cu", device, setDevice)}
-      {renderSelect("Tipo", "tipo", device, setDevice, [
-        { value: "COMPUTADOR", label: "Computador" },
-        { value: "DESKTOP", label: "Desktop" },
-        { value: "MONITOR", label: "Monitor" },
-        { value: "TABLET", label: "Tablet" },
-        { value: "MOVIL", label: "Celular" },
-      ])}
-      {renderSelect("Sistema Operativo", "sistema_operativo", device, setDevice, [
-        { value: "NA", label: "No Aplica" },
-        { value: "SERVER", label: "Server" },
-        { value: "WIN10", label: "Windows 10" },
-        { value: "WIN11", label: "Windows 11" },
-        { value: "WIN7", label: "Windows 7" },
-        { value: "VACIO", label: "Sin Sistema Operativo" },
-      ])}
-      {renderInput("Procesador", "procesador", device, setDevice)}
-      {renderInput("Proveedor", "proveedor", device, setDevice)}
-      {renderSelect("Marca", "marca", device, setDevice, [
-        { value: "DELL", label: "Dell" },
-        { value: "HP", label: "HP" },
-        { value: "LENOVO", label: "Lenovo" },
-        { value: "APPLE", label: "Apple" },
-        { value: "SAMSUNG", label: "Samsung" },
-      ])}
-      {renderSelect("Estado", "estado", device, setDevice, [
-        { value: "REPARAR", label: "En reparación" },
-        { value: "BUENO", label: "Buen estado" },
-        { value: "PERDIDO", label: "Perdido/robado" },
-        { value: "COMPRADO", label: "Comprado" },
-        { value: "MALO", label: "Mal estado" },
-      ])}
-      {renderSelect("Regimen", "regimen", device, setDevice, [
-        { value: "ECCC", label: "ECCC" },
-        { value: "ECOL", label: "ECOL" },
-        { value: "CNC", label: "CNC" },
-      ])}
-      {renderSelect("Tipo de Disco Duro", "tipo_disco_duro", device, setDevice, [
-        { value: "HDD", label: "HDD (Disco Duro Mecánico)" },
-        { value: "SSD", label: "SSD (Disco de Estado Sólido)" },
-        { value: "HYBRID", label: "Híbrido (HDD + SSD)" },
-      ])}
-      {renderSelect("Capacidad de Disco Duro", "capacidad_disco_duro", device, setDevice, [
-        { value: "120GB", label: "120 GB" },
-        { value: "250GB", label: "250 GB" },
-        { value: "500GB", label: "500 GB" },
-        { value: "1TB", label: "1 TB" },
-        { value: "2TB", label: "2 TB" },
-        { value: "4TB", label: "4 TB" },
-        { value: "8TB", label: "8 TB" },
-      ])}
-      {renderSelect("Tipo de Memoria RAM", "tipo_memoria_ram", device, setDevice, [
-        { value: "DDR", label: "DDR" },
-        { value: "DDR2", label: "DDR2" },
-        { value: "DDR3", label: "DDR3" },
-        { value: "DDR4", label: "DDR4" },
-        { value: "LPDDR4", label: "LPDDR4" },
-        { value: "LPDDR5", label: "LPDDR5" },
-      ])}
-      {renderSelect("Capacidad de Memoria RAM", "capacidad_memoria_ram", device, setDevice, [
-        { value: "2GB", label: "2 GB" },
-        { value: "4GB", label: "4 GB" },
-        { value: "8GB", label: "8 GB" },
-        { value: "16GB", label: "16 GB" },
-        { value: "32GB", label: "32 GB" },
-        { value: "64GB", label: "64 GB" },
-      ])}
-      {renderSelect("Ubicación", "ubicacion", device, setDevice, [
-        { value: "CASA", label: "Casa" },
-        { value: "CLIENTE", label: "Cliente" },
-        { value: "SEDE", label: "Sede" },
-        { value: "OTRO", label: "Otro" },
-      ])}
-      {renderInput("Razón Social", "razon_social", device, setDevice)}
-      {renderSelect(
-        "Posición",
-        "posicion",
-        device,
-        setDevice,
-        posiciones.map((pos) => ({
-          value: pos.id,
-          label: pos.nombre,
-        })),
-      )}
-      {renderSelect(
-        "Sede",
-        "sede",
-        device,
-        setDevice,
-        Array.isArray(sedes)
-          ? sedes.map((sede) => ({
+    <div className="device-form">
+      <div className="form-columns">
+        <div className="form-column">
+          {renderSelect("Tipo*", "tipo", device, setDevice, tiposDispositivos)}
+          {renderSelect("Marca*", "marca", device, setDevice, fabricantes)}
+          {renderInput("Modelo*", "modelo", device, setDevice)}
+          {renderInput("Serial*", "serial", device, setDevice)}
+          {renderInput("Placa CU", "placa_cu", device, setDevice)}
+          {renderSelect("Estado*", "estado", device, setDevice, estadosDispositivo)}
+          {renderSelect("Estado de Uso", "estado_uso", device, setDevice, estadosUso)}
+          {renderSelect("Sistema Operativo", "sistema_operativo", device, setDevice, sistemasOperativos)}
+          {renderSelect("Procesador", "procesador", device, setDevice, procesadores)}
+        </div>
+
+        <div className="form-column">
+          {renderSelect("Capacidad Memoria RAM", "capacidad_memoria_ram", device, setDevice, capacidadesMemoriaRam)}
+          {renderSelect("Capacidad Disco Duro", "capacidad_disco_duro", device, setDevice, capacidadesDiscoDuro)}
+          {renderSelect("Ubicación", "ubicacion", device, setDevice, ubicaciones)}
+          {renderSelect("Razón Social", "razon_social", device, setDevice, razonesSociales)}
+          {renderInput("Régimen", "regimen", device, setDevice)}
+          {renderSelect("Estado Propiedad", "estado_propiedad", device, setDevice, estadosPropiedad)}
+          {renderInput("Proveedor", "proveedor", device, setDevice)}
+          {renderInput("Piso", "piso", device, setDevice)}
+        </div>
+
+        <div className="form-column">
+          {renderSelect(
+            "Posición",
+            "posicion",
+            device,
+            setDevice,
+            posiciones.map((pos) => ({
+              value: pos.id,
+              label: pos.nombre,
+            }))
+          )}
+          {renderSelect(
+            "Sede",
+            "sede",
+            device,
+            setDevice,
+            sedes.map((sede) => ({
               value: sede.id,
               label: sede.nombre,
             }))
-          : [],
-      )}
+          )}
+          {renderSelect(
+            "Usuario Asignado",
+            "usuario_asignado",
+            device,
+            setDevice,
+            usuarios.map((user) => ({
+              value: user.id,
+              label: `${user.nombre} ${user.apellido}`,
+            }))
+          )}
+          <div className="input-group">
+            <label>Observaciones</label>
+            <textarea
+              value={device.observaciones || ""}
+              onChange={(e) => setDevice({ ...device, observaciones: e.target.value })}
+              placeholder="Observaciones adicionales"
+              rows="3"
+            />
+          </div>
+        </div>
+      </div>
 
-      <button 
-        type="submit" 
-        className="create-button" 
-        disabled={isSubmitting}
-      >
-        {isSubmitting ? "Procesando..." : (device.id ? "Guardar cambios" : "Agregar")}
+      <button className="create-button" onClick={onSubmit}>
+        {device.id ? "Guardar cambios" : "Agregar Dispositivo"}
       </button>
-    </form>
+    </div>
   )
 }
 
@@ -612,6 +755,7 @@ const renderInput = (label, field, device, setDevice) => (
       value={device[field] || ""}
       onChange={(e) => setDevice({ ...device, [field]: e.target.value })}
       placeholder={label}
+      required={label.includes('*')}
     />
   </div>
 )
@@ -620,7 +764,11 @@ const renderInput = (label, field, device, setDevice) => (
 const renderSelect = (label, field, device, setDevice, options) => (
   <div className="input-group">
     <label>{label}</label>
-    <select value={device[field] || ""} onChange={(e) => setDevice({ ...device, [field]: e.target.value || null })}>
+    <select 
+      value={device[field] || ""} 
+      onChange={(e) => setDevice({ ...device, [field]: e.target.value || null })}
+      required={label.includes('*')}
+    >
       <option value="">Seleccione una opción</option>
       {options.map((opt) => (
         <option key={opt.value} value={opt.value}>

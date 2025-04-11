@@ -18,15 +18,16 @@ from django.contrib import admin  # type: ignore
 from django.urls import path, include  # type: ignore
 from dispositivos import views
 from rest_framework.routers import DefaultRouter
-from dispositivos.views import RolUserViewSet
+from dispositivos.views import RolUserViewSet, HistorialViewSet
 from dispositivos.views import dashboard_data
-from dispositivos.views import validate_token , obtener_datos_protegidos , importar_dispositivos
+from dispositivos.views import validate_token , obtener_datos_protegidos , importar_dispositivos, keepalive, refresh_token_view
 from dispositivos.views import subir_excel, descargar_excel
 
 
 # Configuración del router para las vistas de usuario con ViewSet
 router = DefaultRouter()
 router.register(r'usuarios', RolUserViewSet)
+router.register(r'historial', HistorialViewSet, basename='historial')
 
 # Definición de las rutas URL
 urlpatterns = [
@@ -42,8 +43,6 @@ urlpatterns = [
     path('api/editusuarios/<int:user_id>/', views.edit_user_view, name='edit_user_view'),
     path('api/dusuarios/<int:user_id>/', views.get_user_detail_view, name='get_user_detail_view'),
 
-    path('api/validate-token/', validate_token, name='validate_token'),
-    path('api/datos-protegidos/', obtener_datos_protegidos, name='obtener_datos_protegidos'),
     # Activación y desactivación de usuarios
     path('api/activarusuarios/<int:user_id>/', views.activate_user_view, name='activate_user_view'),
     path('api/deusuarios/<int:user_id>/', views.deactivate_user_view, name='deactivate_user_view'),
@@ -88,10 +87,16 @@ urlpatterns = [
     path('api/posiciones/', views.PosicionListCreateView.as_view(), name='posicion-list-create'),
     path('api/posiciones/<str:id>/', views.PosicionRetrieveUpdateDestroyView.as_view(), name='posicion-retrieve-update-destroy'),
     path('api/posiciones/colores-pisos/', views.get_colores_pisos, name='colores-pisos'),
-    path('api/posiciones/import/', views.import_positions, name='import-positions'),
+    
+    
+    
 
-
-
+    path('auth/refresh/', refresh_token_view, name='refresh_token'),
+    path('api/validate/', validate_token, name='validate_token'),
+    path('auth/protected/', obtener_datos_protegidos, name='protected'),
+    path('auth/keepalive/', keepalive, name='keepalive'),
+    
+    
     path('api/dispositivos-por-sede/', views.dispositivos_por_sede, name='dispositivos-por-sede'),
 ]
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import axios from "axios"
-import { Search, Trash2, FileText, ArrowRight, ChevronLeft, ChevronRight } from "lucide-react"
+import { Search, Trash2, FileText, ChevronLeft, ChevronRight } from "lucide-react"
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts"
 import * as XLSX from "xlsx"
 import '../styles/Inventario.css';

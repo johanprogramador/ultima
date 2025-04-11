@@ -1,36 +1,39 @@
-from django.contrib.auth.hashers import make_password # type: ignore
-from django.shortcuts import get_object_or_404 # type: ignore
-from django.core.mail import send_mail # type: ignore
-from django.conf import settings # type: ignore
-from django.contrib.auth.models import User
-from django.shortcuts import render
-from django.views.decorators.cache import never_cache
-from django.contrib.auth.decorators import login_required # type: ignore
-from rest_framework import viewsets # type: ignore
-from rest_framework.permissions import IsAuthenticated # type: ignore
-from rest_framework.decorators import api_view, permission_classes # type: ignore
-from rest_framework import status# type: ignore
-from rest_framework.permissions import AllowAny
-from rest_framework.response import Response # type: ignore
-from .models import RolUser, Sede , Dispositivo , Servicios ,Posicion
-from .serializers import RolUserSerializer , ServiciosSerializer ,  LoginSerializer , DispositivoSerializer , SedeSerializer, PosicionSerializer
 import logging
-logger = logging.getLogger(__name__)
-from django.views.decorators.cache import cache_control
-from rest_framework.decorators import api_view, authentication_classes, permission_classes ,  parser_classes
-from rest_framework.authentication import TokenAuthentication
-from rest_framework.permissions import IsAuthenticated
-from django.http import JsonResponse
 import jwt
-from rest_framework_simplejwt.tokens import AccessToken
-from rest_framework_simplejwt.tokens import RefreshToken
-from django.contrib.auth import authenticate
+import pandas as pd  # type: ignore
+from fuzzywuzzy import process  # type: ignore
+from django.utils import timezone
+from django.http import JsonResponse
+from django.conf import settings  # type: ignore
+from django.core.mail import send_mail  # type: ignore
+from django.core.exceptions import ObjectDoesNotExist
+from django.contrib.auth import authenticate, login as django_login
+from django.contrib.auth.hashers import make_password  # type: ignore
+from django.contrib.auth.models import User
+from django.contrib.auth.decorators import login_required  # type: ignore
+from django.shortcuts import get_object_or_404, render
+from django.views.decorators.cache import never_cache, cache_control
+from rest_framework import status, viewsets
+from rest_framework.authentication import TokenAuthentication
+from rest_framework.decorators import (
+    api_view, permission_classes, authentication_classes, parser_classes
+)
 from rest_framework.parsers import MultiPartParser
-import pandas as pd # type: ignore
-from fuzzywuzzy import process # type: ignore
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.response import Response
+from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 
+from .models import RolUser, Sede, Dispositivo, Servicios, Posicion
+from .serializers import (
+    RolUserSerializer, ServiciosSerializer, LoginSerializer,
+    DispositivoSerializer, SedeSerializer, PosicionSerializer
+)
+from .pagination import StandardPagination
 
+# Configuración del logger
+logger = logging.getLogger(__name__)
 
+import logging
 
 @login_required
 @never_cache  # Evita que se pueda acceder con "Atrás"
@@ -63,29 +66,170 @@ class RolUserViewSet(viewsets.ModelViewSet):
     queryset = RolUser.objects.all()
     serializer_class = RolUserSerializer
 
-@api_view(["POST"])
-@permission_classes([AllowAny])  
+
+
+logger = logging.getLogger(__name__)
+
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
+from rest_framework import status
+from django.contrib.auth import authenticate
+from rest_framework_simplejwt.tokens import RefreshToken
+from django.contrib.auth import login as django_login
+from django.views.decorators.csrf import csrf_exempt
+import logging
+
+logger = logging.getLogger(__name__)
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+@csrf_exempt
 def login_user(request):
-    """Autenticación de usuario y generación de token JWT."""
-    
-    username = request.data.get("username")
-    password = request.data.get("password")
-
-    if not username or not password:
-        return Response({"error": "Faltan credenciales"}, status=status.HTTP_400_BAD_REQUEST)
-
-    user = authenticate(username=username, password=password)
-    
-    if user:
+    try:
+        # Limpiar sesión existente
+        if hasattr(request, 'session'):
+            request.session.flush()
+        
+        # Validar credenciales
+        username = request.data.get('username', '').strip()
+        password = request.data.get('password', '').strip()
+        sede_id = request.data.get('sede_id', None)  # Nuevo campo para la sede
+        
+        if not username or not password:
+            return Response(
+                {'error': 'Usuario y contraseña requeridos'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if not sede_id:
+            return Response(
+                {'error': 'Debe seleccionar una sede'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Autenticar usuario
+        user = authenticate(username=username, password=password)
+        
+        if not user:
+            logger.warning(f"Intento fallido de login para usuario: {username}")
+            return Response(
+                {'error': 'Credenciales inválidas'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        
+        if not user.is_active:
+            logger.warning(f"Intento de login para usuario inactivo: {username}")
+            return Response(
+                {'error': 'Cuenta desactivada'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Verificar que el usuario tenga acceso a la sede solicitada
+        try:
+            sede = Sede.objects.get(id=sede_id)
+            if not user.sedes.filter(id=sede_id).exists():  # Asumiendo una relación ManyToMany
+                return Response(
+                    {'error': 'No tiene permisos para acceder a esta sede'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        except Sede.DoesNotExist:
+            return Response(
+                {'error': 'Sede no encontrada'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Iniciar sesión correctamente
+        django_login(request, user)
+        request.session['last_activity'] = timezone.now().isoformat()
+        request.session['sede_id'] = sede_id  # Almacenar la sede en la sesión
+        
+        # Generar tokens JWT
         refresh = RefreshToken.for_user(user)
+        
+        logger.info(f"Login exitoso para usuario: {username} en sede: {sede.nombre}")
+        
         return Response({
-            "access": str(refresh.access_token),
-            "refresh": str(refresh),
-            "username": user.username
+            'access': str(refresh.access_token),
+            'refresh': str(refresh),
+            'username': user.username,
+            'email': user.email,
+            'is_admin': user.is_superuser, 
+            'sede_id': sede_id,
+            'sede_nombre': sede.nombre,
+            'sessionid': request.session.session_key,
+            'message': 'Autenticación exitosa'
         }, status=status.HTTP_200_OK)
-
-    return Response({"error": "Credenciales incorrectas"}, status=status.HTTP_401_UNAUTHORIZED)
-
+        
+    except Exception as e:
+        logger.error(f"Error en login: {str(e)}", exc_info=True)
+        return Response(
+            {'error': 'Error interno del servidor'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+        
+@api_view(['GET'])  # Cambiado a GET ya que no recibe datos
+@permission_classes([IsAuthenticated])
+def keepalive(request):
+    """
+    Endpoint para mantener activa la sesión y verificar autenticación
+    """
+    # Actualizar última actividad
+    request.session['last_activity'] = timezone.now().isoformat()
+    request.session.save()
+    
+    # Devolver información útil del usuario
+    return Response({
+        "status": "active",
+        "user": {
+            "id": request.user.id,
+            "username": request.user.username,
+            "email": request.user.email
+        },
+        "last_activity": request.session['last_activity'],
+        "session_expiry": request.session.get_expiry_date()
+    }, status=status.HTTP_200_OK)
+    
+@api_view(["GET"])  # Cambiado a GET ya que es una verificación
+@permission_classes([])
+def validate_token(request):
+    """Valida si el token es correcto y aún es válido."""
+    auth_header = request.headers.get("Authorization")
+    
+    if not auth_header:
+        return Response(
+            {"error": "Token no proporcionado"}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    try:
+        # Verificar formato del header
+        if not auth_header.startswith("Bearer "):
+            raise TokenError("Formato de token inválido")
+            
+        token = auth_header.split(" ")[1]
+        AccessToken(token).verify()  # Verifica expiración y firma
+        
+        return Response({
+            "message": "Token válido",
+            "is_valid": True
+        }, status=status.HTTP_200_OK)
+        
+    except TokenError as e:
+        return Response({
+            "error": str(e),
+            "is_valid": False
+        }, status=status.HTTP_401_UNAUTHORIZED)
+    except Exception as e:
+        return Response({
+            "error": "Error al procesar el token",
+            "details": str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def obtener_datos_protegidos(request):
+    return Response({"message": "Datos protegidos disponibles solo para usuarios autenticados"})
 @api_view(['GET'])
 @permission_classes([])  
 def get_users_view(request):
@@ -210,25 +354,7 @@ def register_user_view(request):
         return Response({"error": "Ocurrió un error al registrar el usuario."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-@api_view(["POST"])
-@permission_classes([]) 
-def validate_token(request):
-    """Valida si el token es correcto y aún es válido."""
-    auth_header = request.headers.get("Authorization")
-    if not auth_header or "Bearer" not in auth_header:
-        return Response({"error": "Token no proporcionado"}, status=status.HTTP_401_UNAUTHORIZED)
 
-    try:
-        token = auth_header.split(" ")[1]  # Extraer token de la cabecera
-        AccessToken(token)  # Decodificar y validar token
-        return Response({"message": "Token válido"}, status=status.HTTP_200_OK)
-    except Exception:
-        return Response({"error": "Token inválido o expirado"}, status=status.HTTP_401_UNAUTHORIZED)
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def obtener_datos_protegidos(request):
-    return Response({"message": "Datos protegidos disponibles solo para usuarios autenticados"})
 
 @api_view(['GET' , 'POST'])
 def reset_password_request(request):
@@ -316,119 +442,167 @@ def edit_user_view(request, user_id):
 
 
 
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
+from rest_framework import status
+from .models import Dispositivo
+from .serializers import DispositivoSerializer
+import logging
+
+logger = logging.getLogger(__name__)
+
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+from django.db import IntegrityError
+import logging
+from .models import Dispositivo
+from .serializers import DispositivoSerializer
+
+logger = logging.getLogger(__name__)
+
 @api_view(['GET', 'POST'])
 @permission_classes([AllowAny])
 def dispositivo_view(request):
     """
     Maneja la creación y listado de dispositivos.
+    
+    GET:
+    Retorna todos los dispositivos con sus relaciones.
+    
+    POST:
+    Crea un nuevo dispositivo.
+    Campos obligatorios:
+    - tipo: Tipo de dispositivo (ej. 'COMPUTADOR')
+    - marca: Fabricante (ej. 'DELL')
+    - modelo: Modelo específico
+    - serial: Número de serie único
     """
     if request.method == 'GET':
-        # Obtener todos los dispositivos
-        dispositivos = Dispositivo.objects.all()
-        serializer = DispositivoSerializer(dispositivos, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        try:
+            dispositivos = Dispositivo.objects.select_related(
+                'posicion', 'sede'
+            ).all()
+            serializer = DispositivoSerializer(dispositivos, many=True)
+            return Response({
+                'data': serializer.data,
+                'count': len(serializer.data)
+            }, status=status.HTTP_200_OK)
+        except Exception as e:
+            logger.error(f"Error al obtener dispositivos: {str(e)}", exc_info=True)
+            return Response(
+                {"error": "Error interno del servidor al obtener dispositivos"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
     elif request.method == 'POST':
-        # Validar y crear un nuevo dispositivo
-        data = request.data
-
-        # Obtener los campos del formulario
-        tipo = data.get('tipo', '').strip()
-        marca = data.get('marca', '').strip()
-        modelo = data.get('modelo', '').strip()
-        serial = data.get('serial', '').strip()
-        estado = data.get('estado', '').strip()
-        capacidad_memoria_ram = data.get('capacidad_memoria_ram', '').strip()
-        capacidad_disco_duro = data.get('capacidad_disco_duro', '').strip()
-        tipo_disco_duro = data.get('tipo_disco_duro', '').strip()
-        tipo_memoria_ram = data.get('tipo_memoria_ram', '').strip()
-        ubicacion = data.get('ubicacion', '').strip()
-        razon_social = data.get('razon_social', '').strip()
-        regimen = data.get('regimen', '').strip()
-        placa_cu = data.get('placa_cu', '').strip()
-        posicion_id = data.get('posicion', None)
-        sede_id = data.get('sede', None)
-        procesador = data.get('procesador', '').strip()
-        sistema_operativo = data.get('sistema_operativo', '').strip()
-        proveedor = data.get('proveedor', '').strip()
-
-        # Validaciones básicas
-        if not tipo or not marca or not modelo or not serial:
-            return Response({"error": "Los campos tipo, marca, modelo y serial son obligatorios."}, 
-                            status=status.HTTP_400_BAD_REQUEST)
-
-        if Dispositivo.objects.filter(serial=serial).exists():
-            return Response({"error": "Ya existe un dispositivo con este número de serial."}, 
-                            status=status.HTTP_400_BAD_REQUEST)
-
+        serializer = DispositivoSerializer(data=request.data)
+        
+        if not serializer.is_valid():
+            return Response({
+                'error': 'Datos inválidos',
+                'details': serializer.errors
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
         try:
-            # Crear el dispositivo
-            dispositivo = Dispositivo.objects.create(
-                tipo=tipo,
-                marca=marca,
-                modelo=modelo,
-                serial=serial,
-                estado=estado,
-                capacidad_memoria_ram=capacidad_memoria_ram,
-                capacidad_disco_duro=capacidad_disco_duro,
-                tipo_disco_duro=tipo_disco_duro,
-                tipo_memoria_ram=tipo_memoria_ram,
-                ubicacion=ubicacion,
-                razon_social=razon_social,
-                regimen=regimen,
-                placa_cu=placa_cu,
-                posicion_id=posicion_id,
-                sede_id=sede_id,
-                procesador=procesador,
-                sistema_operativo=sistema_operativo,
-                proveedor=proveedor
-                
-            )
-            return Response({"message": "Dispositivo registrado exitosamente."}, status=status.HTTP_201_CREATED)
-
-        except Exception as e:
-            logger.error(f"Error al registrar el dispositivo: {str(e)}")
-            return Response({"error": "Ocurrió un error al registrar el dispositivo."}, 
-                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            # Validación de serial único
+            if Dispositivo.objects.filter(serial=serializer.validated_data['serial']).exists():
+                return Response(
+                    {"error": "El serial del dispositivo ya existe en el sistema"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
             
+            dispositivo = serializer.save()
+            return Response(
+                DispositivoSerializer(dispositivo).data,
+                status=status.HTTP_201_CREATED
+            )
+        except IntegrityError as e:
+            logger.error(f"Error de integridad al crear dispositivo: {str(e)}")
+            return Response(
+                {"error": "Error de integridad de datos - posible duplicado"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            logger.error(f"Error al crear dispositivo: {str(e)}", exc_info=True)
+            return Response(
+                {"error": "Error interno del servidor al crear dispositivo"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
 @api_view(['GET', 'PUT', 'DELETE'])
 @permission_classes([AllowAny])
 def dispositivo_detail_view(request, dispositivo_id):
     """
     Maneja la obtención, actualización y eliminación de un dispositivo específico.
+    
+    Parámetros:
+    - dispositivo_id: ID del dispositivo a gestionar
+    
+    GET: Retorna los detalles del dispositivo
+    PUT: Actualiza el dispositivo (actualización parcial permitida)
+    DELETE: Elimina el dispositivo
     """
     try:
-        # Intentar obtener el dispositivo por su ID
-        dispositivo = Dispositivo.objects.get(id=dispositivo_id)
+        dispositivo = Dispositivo.objects.select_related(
+            'posicion', 'sede', 'usuario_asignado'
+        ).get(id=dispositivo_id)
     except Dispositivo.DoesNotExist:
-        return Response({"error": "El dispositivo no existe."}, status=status.HTTP_404_NOT_FOUND)
+        return Response(
+            {"error": "Dispositivo no encontrado"},
+            status=status.HTTP_404_NOT_FOUND
+        )
 
     if request.method == 'GET':
-        # Obtener los detalles del dispositivo
         serializer = DispositivoSerializer(dispositivo)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.data)
 
     elif request.method == 'PUT':
-    # Usar el serializador para actualizar
-        serializer = DispositivoSerializer(dispositivo, data=request.data, partial=True)
-    
-        if serializer.is_valid():
+        serializer = DispositivoSerializer(
+            dispositivo, 
+            data=request.data, 
+            partial=True
+        )
+        
+        if not serializer.is_valid():
+            return Response({
+                'error': 'Datos de actualización inválidos',
+                'details': serializer.errors
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            # Validar serial único si se está modificando
+            if 'serial' in request.data:
+                new_serial = request.data['serial']
+                if Dispositivo.objects.filter(serial=new_serial).exclude(id=dispositivo_id).exists():
+                    return Response(
+                        {"error": "El nuevo serial ya pertenece a otro dispositivo"},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            
             serializer.save()
-            return Response({"message": "Dispositivo actualizado exitosamente."}, status=status.HTTP_200_OK)
-        else:
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            return Response(serializer.data)
+        except Exception as e:
+            logger.error(f"Error al actualizar dispositivo {dispositivo_id}: {str(e)}", exc_info=True)
+            return Response(
+                {"error": "Error interno al actualizar dispositivo"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
     elif request.method == 'DELETE':
-        # Eliminar el dispositivo
         try:
             dispositivo.delete()
-            return Response({"message": "Dispositivo eliminado exitosamente."}, status=status.HTTP_204_NO_CONTENT)
+            return Response(
+                status=status.HTTP_204_NO_CONTENT
+            )
         except Exception as e:
-            logger.error(f"Error al eliminar el dispositivo: {str(e)}")
-            return Response({"error": "Ocurrió un error al eliminar el dispositivo."}, 
-                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-            
-            
+            logger.error(f"Error al eliminar dispositivo {dispositivo_id}: {str(e)}", exc_info=True)
+            return Response(
+                {"error": "Error interno al eliminar dispositivo"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
             
 @api_view(['GET', 'POST'])
 @permission_classes([AllowAny])
@@ -604,6 +778,13 @@ def posiciones_view(request):
 
     return Response(serializer.data, status=200)
 
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from django.db.models import Count, Sum, Q, F, ExpressionWrapper, FloatField
+from datetime import datetime, timedelta
+from django.utils import timezone
+from .models import Sede, Dispositivo, Servicios, Posicion, Movimiento, Historial
 
 @api_view(['GET'])
 @permission_classes([]) 
@@ -678,7 +859,6 @@ def dashboard_data(request):
     ]
 
     return Response({"cardsData": cardsData})
-
 
 from django.core.exceptions import ObjectDoesNotExist
 from thefuzz import process # type: ignore
@@ -839,6 +1019,8 @@ from rest_framework.permissions import AllowAny
 from rest_framework.decorators import api_view, permission_classes
 import time
 
+
+
 class PosicionListCreateView(generics.ListCreateAPIView):
     queryset = Posicion.objects.all()
     serializer_class = PosicionSerializer
@@ -902,55 +1084,131 @@ def get_colores_pisos(request):
         "colores": dict(Posicion.COLORES),
         "pisos": dict(Posicion.PISOS),
     })
-
-
-# Añadir a views.py
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny
+# api/views.py
+from rest_framework import viewsets, filters
+from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework import status
-import json
+from django_filters.rest_framework import DjangoFilterBackend # type: ignore
+from .models import Historial
+from .serializers import HistorialSerializer
+from django.db.models import Q
+from datetime import datetime, timedelta
+
+
+
+from rest_framework import viewsets, filters
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+
+from django.db.models import Q
+from datetime import datetime, timedelta
+from .models import Historial, Dispositivo
+from .serializers import HistorialSerializer
+
+class HistorialViewSet(viewsets.ReadOnlyModelViewSet):
+    permission_classes = [AllowAny]
+    queryset = Historial.objects.all().select_related('dispositivo', 'usuario')
+    serializer_class = HistorialSerializer
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['tipo_cambio']
+    search_fields = [
+        'dispositivo__serial', 
+        'dispositivo__modelo',
+        'dispositivo__marca',
+        'dispositivo__placa_cu',
+        'usuario__nombre',
+        'usuario__username',
+        'usuario__email'
+    ]
+    ordering_fields = ['fecha_modificacion', 'fecha_creacion']
+    ordering = ['-fecha_modificacion']  # Orden por defecto
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        
+        # Filtros adicionales
+        fecha_inicio = self.request.query_params.get('fecha_inicio')
+        fecha_fin = self.request.query_params.get('fecha_fin')
+        dispositivo_id = self.request.query_params.get('dispositivo_id')
+        tipo_cambio = self.request.query_params.get('tipo_cambio')
+        
+        # Filtro por fechas con manejo de errores
+        try:
+            if fecha_inicio:
+                fecha_inicio_dt = datetime.strptime(fecha_inicio, '%Y-%m-%d')
+                queryset = queryset.filter(fecha_modificacion__gte=fecha_inicio_dt)
+                
+            if fecha_fin:
+                fecha_fin_dt = datetime.strptime(fecha_fin, '%Y-%m-%d') + timedelta(days=1)
+                queryset = queryset.filter(fecha_modificacion__lte=fecha_fin_dt)
+        except ValueError as e:
+            # Puedes loggear el error si es necesario
+            pass
+            
+        # Filtro por dispositivo (ID exacto o búsqueda)
+        if dispositivo_id:
+            if dispositivo_id.isdigit():
+                queryset = queryset.filter(dispositivo__id=dispositivo_id)
+            else:
+                queryset = queryset.filter(
+                    Q(dispositivo__serial__icontains=dispositivo_id) |
+                    Q(dispositivo__placa_cu__icontains=dispositivo_id) |
+                    Q(dispositivo__modelo__icontains=dispositivo_id) |
+                    Q(dispositivo__marca__icontains=dispositivo_id)
+                )
+                
+        if tipo_cambio:
+            queryset = queryset.filter(tipo_cambio=tipo_cambio)
+            
+        return queryset
+
+    @action(detail=False, methods=['get'])
+    def opciones_filtro(self, request):
+        """Endpoint para obtener opciones de filtro"""
+        # Obtener dispositivos recientes (últimos 100)
+        dispositivos = Dispositivo.objects.all().order_by('-id')[:100]
+        
+        return Response({
+            'tipos_cambio': dict(Historial.TipoCambio.choices),
+            'dispositivos': [
+                {
+                    'id': d.id,
+                    'marca': d.marca,
+                    'modelo': d.modelo,
+                    'serial': d.serial,
+                    'placa_cu': d.placa_cu
+                } 
+                for d in dispositivos
+            ],
+            'ordering_fields': self.ordering_fields,
+            'search_fields': self.search_fields
+        })
+# views.py
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.exceptions import TokenError
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
-def import_positions(request):
-    positions = request.data
-    created_count = 0
-    errors = []
-    
-    # Obtener un dispositivo por defecto (puedes ajustar esta lógica)
-    default_device = Dispositivo.objects.first()
-    
-    if not default_device:
-        return Response({"error": "No hay dispositivos disponibles para asignar"}, 
-                        status=status.HTTP_400_BAD_REQUEST)
-    
-    for position_data in positions:
-        # Generar ID si no existe
-        if "id" not in position_data:
-            position_data["id"] = f"pos_{int(time.time())}"
+def refresh_token_view(request):
+    try:
+        refresh_token = request.data.get('refresh')
+        if not refresh_token:
+            return Response({'error': 'Refresh token requerido'}, status=400)
+            
+        refresh = RefreshToken(refresh_token)
+        new_access = str(refresh.access_token)
         
-        serializer = PosicionSerializer(data=position_data)
-        if serializer.is_valid():
-            position = serializer.save()
-            # Asignar el dispositivo por defecto
-            position.dispositivos.add(default_device)
-            created_count += 1
-        else:
-            errors.append({
-                "position": position_data.get("id", "unknown"),
-                "errors": serializer.errors
-            })
-    
-    return Response({
-        "created": created_count,
-        "errors": errors
-    }, status=status.HTTP_200_OK if created_count > 0 else status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'access': new_access,
+            'refresh': str(refresh)
+        }, status=200)
+        
+    except TokenError as e:
+        return Response({'error': str(e)}, status=401)
     
     
-    
-# views.py
-from rest_framework.decorators import api_view, permission_classes
+    from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from django.db.models import Count
