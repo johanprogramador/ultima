@@ -1,45 +1,50 @@
 import logging
-import jwt
+import time
+from datetime import datetime, timedelta
+import jwt # type: ignore
 import pandas as pd  # type: ignore
 from fuzzywuzzy import process  # type: ignore
-from django.utils import timezone
-from django.http import JsonResponse
 from django.conf import settings  # type: ignore
-from django.core.mail import send_mail  # type: ignore
 from django.core.exceptions import ObjectDoesNotExist
+from django.core.mail import send_mail  # type: ignore
+from django.db import IntegrityError, transaction
+from django.db.models import Count, ExpressionWrapper, F, FloatField, Q, Sum
+from django.http import JsonResponse
+from django.shortcuts import get_object_or_404, render
+from django.utils import timezone
+from django.views.decorators.cache import never_cache, cache_control
+from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth import authenticate, login as django_login
 from django.contrib.auth.hashers import make_password  # type: ignore
 from django.contrib.auth.models import User
 from django.contrib.auth.decorators import login_required  # type: ignore
-from django.shortcuts import get_object_or_404, render
-from django.views.decorators.cache import never_cache, cache_control
-from rest_framework import status, viewsets
-from rest_framework.authentication import TokenAuthentication
-from rest_framework.decorators import (
-    api_view, permission_classes, authentication_classes, parser_classes
-)
-from rest_framework.parsers import MultiPartParser
-from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework.response import Response
-from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
-
-from .models import RolUser, Sede, Dispositivo, Servicios, Posicion
+from rest_framework import viewsets, filters, status, generics # type: ignore
+from rest_framework.authentication import TokenAuthentication # type: ignore
+from rest_framework.decorators import (  # type: ignore
+    api_view, parser_classes, permission_classes,
+    action, authentication_classes
+) # type: ignore
+from rest_framework.parsers import MultiPartParser # type: ignore
+from rest_framework.permissions import AllowAny, IsAuthenticated # type: ignore
+from rest_framework.response import Response # type: ignore
+from django_filters.rest_framework import DjangoFilterBackend  # type: ignore
+from rest_framework_simplejwt.tokens import AccessToken, RefreshToken # type: ignore
+from rest_framework_simplejwt.exceptions import TokenError # type: ignore
+from .models import RolUser, Sede, Dispositivo, Servicios, Posicion, Historial, Movimiento
 from .serializers import (
     RolUserSerializer, ServiciosSerializer, LoginSerializer,
-    DispositivoSerializer, SedeSerializer, PosicionSerializer
+    DispositivoSerializer, SedeSerializer, PosicionSerializer, HistorialSerializer
 )
 from .pagination import StandardPagination
+from .utils import importar_excel, exportar_excel
 
-# Configuración del logger
 logger = logging.getLogger(__name__)
 
-import logging
 
 @login_required
 @never_cache  # Evita que se pueda acceder con "Atrás"
 def dashboard(request):
     return render(request, 'dashboard.html')
-
 
 @api_view(['GET'])
 @authentication_classes([TokenAuthentication])
@@ -50,37 +55,16 @@ def dashboard(request):
 @api_view(['GET' ])
 @permission_classes([IsAuthenticated])  # Solo los usuarios autenticados pueden acceder
 def get_users_view(request):
-    """
-    Obtiene la lista de usuarios.
-    """
-    # Obtén los usuarios de la base de datos (en tu caso RolUser)
+
     users = RolUser.objects.all()
     
-    # Serializa la lista de usuarios
     serializer = RolUserSerializer(users, many=True)
-    
-    # Devuelve la lista de usuarios serializada
+
     return Response(serializer.data)
 
 class RolUserViewSet(viewsets.ModelViewSet):
     queryset = RolUser.objects.all()
     serializer_class = RolUserSerializer
-
-
-
-logger = logging.getLogger(__name__)
-
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny
-from rest_framework.response import Response
-from rest_framework import status
-from django.contrib.auth import authenticate
-from rest_framework_simplejwt.tokens import RefreshToken
-from django.contrib.auth import login as django_login
-from django.views.decorators.csrf import csrf_exempt
-import logging
-
-logger = logging.getLogger(__name__)
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
@@ -90,8 +74,6 @@ def login_user(request):
         # Limpiar sesión existente
         if hasattr(request, 'session'):
             request.session.flush()
-        
-        # Validar credenciales
         username = request.data.get('username', '').strip()
         password = request.data.get('password', '').strip()
         sede_id = request.data.get('sede_id', None)  # Nuevo campo para la sede
@@ -107,8 +89,6 @@ def login_user(request):
                 {'error': 'Debe seleccionar una sede'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
-        # Autenticar usuario
         user = authenticate(username=username, password=password)
         
         if not user:
@@ -124,8 +104,7 @@ def login_user(request):
                 {'error': 'Cuenta desactivada'},
                 status=status.HTTP_403_FORBIDDEN
             )
-        
-        # Verificar que el usuario tenga acceso a la sede solicitada
+
         try:
             sede = Sede.objects.get(id=sede_id)
             if not user.sedes.filter(id=sede_id).exists():  # Asumiendo una relación ManyToMany
@@ -171,10 +150,6 @@ def login_user(request):
 @api_view(['GET'])  # Cambiado a GET ya que no recibe datos
 @permission_classes([IsAuthenticated])
 def keepalive(request):
-    """
-    Endpoint para mantener activa la sesión y verificar autenticación
-    """
-    # Actualizar última actividad
     request.session['last_activity'] = timezone.now().isoformat()
     request.session.save()
     
@@ -193,7 +168,6 @@ def keepalive(request):
 @api_view(["GET"])  # Cambiado a GET ya que es una verificación
 @permission_classes([])
 def validate_token(request):
-    """Valida si el token es correcto y aún es válido."""
     auth_header = request.headers.get("Authorization")
     
     if not auth_header:
@@ -248,14 +222,10 @@ def user_detail_view(request, user_id):
     serializer = RolUserSerializer(user)
     return Response(serializer.data, status=200)
 
-
-
 @api_view(['PUT'])
 @permission_classes([])  # Sin permisos de autenticación
 def activate_user_view(request, user_id):
-    """
-    Activa un usuario cambiando el campo 'is_active' a True.
-    """
+
     try:
         user = RolUser.objects.get(id=user_id)
     except RolUser.DoesNotExist:
@@ -267,7 +237,6 @@ def activate_user_view(request, user_id):
     user.is_active = True
     user.save()
     return Response({"message": "Usuario activado exitosamente."}, status=status.HTTP_200_OK)
-
 
 @api_view(['PUT'])
 @permission_classes([])  # Sin permisos de autenticación
@@ -287,13 +256,10 @@ def deactivate_user_view(request, user_id):
     user.save()
     return Response({"message": "Usuario desactivado exitosamente."}, status=status.HTTP_200_OK)
 
-
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_user_detail_view(request, user_id):
-    """
-    Devuelve los detalles de un usuario específico.
-    """
+
     try:
         # Obtener el usuario por ID
         user = RolUser.objects.get(id=user_id)
@@ -307,9 +273,6 @@ def get_user_detail_view(request, user_id):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def register_user_view(request):
-    """
-    Registra un nuevo usuario con validaciones.
-    """
     data = request.data
 
     username = data.get('username', '').strip()
@@ -320,7 +283,7 @@ def register_user_view(request):
     celular = data.get('celular', '').strip()
     documento = data.get('documento', '').strip()
     rol = data.get('rol', 'coordinador')
-    sedes_ids = data.get('sedes', [])
+    sedes_ids = data.get('sedes', [])  # Lista de IDs de sedes
 
     if not username or not email or not password or not confirm_password:
         return Response({"error": "Todos los campos son obligatorios."}, status=status.HTTP_400_BAD_REQUEST)
@@ -328,10 +291,15 @@ def register_user_view(request):
     if password != confirm_password:
         return Response({"error": "Las contraseñas no coinciden."}, status=status.HTTP_400_BAD_REQUEST)
 
-    if RolUser.objects.filter(email=email).exists():
-        return Response({"error": "Este correo electrónico ya está registrado."}, status=status.HTTP_400_BAD_REQUEST)
+    if rol != 'admin' and not sedes_ids:
+        return Response({"error": "Debe seleccionar al menos una sede para coordinadores."}, status=status.HTTP_400_BAD_REQUEST)
 
     try:
+        # Verificar que las sedes existen
+        sedes = Sede.objects.filter(id__in=sedes_ids)
+        if sedes.count() != len(sedes_ids):
+            return Response({"error": "Una o más sedes no existen."}, status=status.HTTP_400_BAD_REQUEST)
+
         user = RolUser.objects.create(
             username=username,
             email=email,
@@ -343,24 +311,19 @@ def register_user_view(request):
             is_active=True
         )
 
-        sedes = Sede.objects.filter(id__in=sedes_ids)
         user.sedes.set(sedes)
-        user.save()
-
         return Response({"message": "Usuario registrado exitosamente."}, status=status.HTTP_201_CREATED)
 
+    except IntegrityError as e:
+        logger.error(f"Error de integridad al registrar usuario: {str(e)}")
+        return Response({"error": "El nombre de usuario o correo ya existe."}, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
         logger.error(f"Error al registrar el usuario: {str(e)}")
         return Response({"error": "Ocurrió un error al registrar el usuario."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-
-
-
 @api_view(['GET' , 'POST'])
 def reset_password_request(request):
-    """
-    Solicita el restablecimiento de contraseña.
-    """
+
     email = request.data.get('email', '').strip().lower()
     if not email:
         return Response({"error": "El correo es un campo obligatorio."}, status=status.HTTP_400_BAD_REQUEST)
@@ -387,9 +350,7 @@ def reset_password_request(request):
 
 @api_view(['GET' , 'POST'])
 def reset_password(request):
-    """
-    Restablece la contraseña del usuario.
-    """
+
     email = request.data.get('email', '').strip().lower()
     new_password = request.data.get('password', '').strip()
 
@@ -410,20 +371,14 @@ def reset_password(request):
         return Response({"error": f"Error al cambiar la contraseña: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['GET'])
-@permission_classes([]) 
+@permission_classes([AllowAny]) 
 def get_sedes_view(request):
-    """
-    Devuelve una lista de sedes disponibles.
-    """
     try:
         sedes = Sede.objects.all().values('id', 'nombre', 'ciudad', 'direccion')
         return Response({"sedes": list(sedes)}, status=status.HTTP_200_OK)
     except Exception as e:
         logger.error(f"Error al obtener las sedes: {str(e)}")
         return Response({"error": "Ocurrió un error al obtener las sedes."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-
 
 @api_view(['PUT'])
 @permission_classes([AllowAny])
@@ -433,63 +388,59 @@ def edit_user_view(request, user_id):
     except RolUser.DoesNotExist:
         return Response({"error": "Usuario no encontrado."}, status=status.HTTP_404_NOT_FOUND)
 
-    # Serializar y actualizar datos
-    serializer = RolUserSerializer(user, data=request.data, partial=True)
-    if serializer.is_valid():
-        serializer.save()
-        return Response({"message": "Usuario editado exitosamente."}, status=status.HTTP_200_OK)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    data = request.data
+    sedes_ids = data.get('sedes', [])
 
+    # Validación para coordinadores
+    if user.rol != 'admin' and not sedes_ids:
+        return Response({"error": "Debe seleccionar al menos una sede para coordinadores."}, status=status.HTTP_400_BAD_REQUEST)
 
+    try:
+        # Verificar que las sedes existen
+        sedes = Sede.objects.filter(id__in=sedes_ids)
+        if sedes.count() != len(sedes_ids):
+            return Response({"error": "Una o más sedes no existen."}, status=status.HTTP_400_BAD_REQUEST)
 
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny
-from rest_framework.response import Response
-from rest_framework import status
-from .models import Dispositivo
-from .serializers import DispositivoSerializer
-import logging
+        serializer = RolUserSerializer(user, data=data, partial=True)
+        if serializer.is_valid():
+            user = serializer.save()
+            user.sedes.set(sedes)
+            return Response({"message": "Usuario actualizado exitosamente."}, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-logger = logging.getLogger(__name__)
-
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.response import Response
-from rest_framework import status
-from django.db import IntegrityError
-import logging
-from .models import Dispositivo
-from .serializers import DispositivoSerializer
-
-logger = logging.getLogger(__name__)
+    except Exception as e:
+        logger.error(f"Error al actualizar usuario: {str(e)}")
+        return Response({"error": "Ocurrió un error al actualizar el usuario."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['GET', 'POST'])
 @permission_classes([AllowAny])
 def dispositivo_view(request):
-    """
-    Maneja la creación y listado de dispositivos.
-    
-    GET:
-    Retorna todos los dispositivos con sus relaciones.
-    
-    POST:
-    Crea un nuevo dispositivo.
-    Campos obligatorios:
-    - tipo: Tipo de dispositivo (ej. 'COMPUTADOR')
-    - marca: Fabricante (ej. 'DELL')
-    - modelo: Modelo específico
-    - serial: Número de serie único
-    """
     if request.method == 'GET':
         try:
-            dispositivos = Dispositivo.objects.select_related(
-                'posicion', 'sede'
-            ).all()
+            queryset = Dispositivo.objects.select_related('posicion', 'sede')
+            
+            # Filtrado por sede si se proporciona
+            sede_id = request.query_params.get('sede_id')
+            if sede_id:
+                queryset = queryset.filter(sede_id=sede_id)
+            
+            # Filtrado por posición si se proporciona
+            posicion_id = request.query_params.get('posicion_id')
+            if posicion_id:
+                queryset = queryset.filter(posicion_id=posicion_id)
+            
+            dispositivos = queryset.all()
             serializer = DispositivoSerializer(dispositivos, many=True)
+            
             return Response({
                 'data': serializer.data,
-                'count': len(serializer.data)
+                'count': len(serializer.data),
+                'filters': {
+                    'sede_id': sede_id,
+                    'posicion_id': posicion_id
+                }
             }, status=status.HTTP_200_OK)
+            
         except Exception as e:
             logger.error(f"Error al obtener dispositivos: {str(e)}", exc_info=True)
             return Response(
@@ -498,7 +449,10 @@ def dispositivo_view(request):
             )
 
     elif request.method == 'POST':
-        serializer = DispositivoSerializer(data=request.data)
+        serializer = DispositivoSerializer(
+            data=request.data,
+            context={'request': request}  # Pasar el request al serializer
+        )
         
         if not serializer.is_valid():
             return Response({
@@ -507,22 +461,27 @@ def dispositivo_view(request):
             }, status=status.HTTP_400_BAD_REQUEST)
         
         try:
-            # Validación de serial único
-            if Dispositivo.objects.filter(serial=serializer.validated_data['serial']).exists():
+            with transaction.atomic():
+                # Validación de serial único (hecha en el serializer también)
+                if Dispositivo.objects.filter(serial=serializer.validated_data['serial']).exists():
+                    return Response(
+                        {"error": "El serial del dispositivo ya existe en el sistema"},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                
+                dispositivo = serializer.save()
+                
+                # Respuesta con datos completos incluyendo relaciones
+                full_serializer = DispositivoSerializer(dispositivo)
                 return Response(
-                    {"error": "El serial del dispositivo ya existe en el sistema"},
-                    status=status.HTTP_400_BAD_REQUEST
+                    full_serializer.data,
+                    status=status.HTTP_201_CREATED
                 )
-            
-            dispositivo = serializer.save()
-            return Response(
-                DispositivoSerializer(dispositivo).data,
-                status=status.HTTP_201_CREATED
-            )
+                
         except IntegrityError as e:
             logger.error(f"Error de integridad al crear dispositivo: {str(e)}")
             return Response(
-                {"error": "Error de integridad de datos - posible duplicado"},
+                {"error": "Error de integridad de datos - posible duplicado o relación inválida"},
                 status=status.HTTP_400_BAD_REQUEST
             )
         except Exception as e:
@@ -535,19 +494,9 @@ def dispositivo_view(request):
 @api_view(['GET', 'PUT', 'DELETE'])
 @permission_classes([AllowAny])
 def dispositivo_detail_view(request, dispositivo_id):
-    """
-    Maneja la obtención, actualización y eliminación de un dispositivo específico.
-    
-    Parámetros:
-    - dispositivo_id: ID del dispositivo a gestionar
-    
-    GET: Retorna los detalles del dispositivo
-    PUT: Actualiza el dispositivo (actualización parcial permitida)
-    DELETE: Elimina el dispositivo
-    """
     try:
         dispositivo = Dispositivo.objects.select_related(
-            'posicion', 'sede', 'usuario_asignado'
+            'posicion', 'sede'
         ).get(id=dispositivo_id)
     except Dispositivo.DoesNotExist:
         return Response(
@@ -560,30 +509,42 @@ def dispositivo_detail_view(request, dispositivo_id):
         return Response(serializer.data)
 
     elif request.method == 'PUT':
-        serializer = DispositivoSerializer(
-            dispositivo, 
-            data=request.data, 
-            partial=True
-        )
-        
-        if not serializer.is_valid():
-            return Response({
-                'error': 'Datos de actualización inválidos',
-                'details': serializer.errors
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
         try:
-            # Validar serial único si se está modificando
-            if 'serial' in request.data:
-                new_serial = request.data['serial']
-                if Dispositivo.objects.filter(serial=new_serial).exclude(id=dispositivo_id).exists():
-                    return Response(
-                        {"error": "El nuevo serial ya pertenece a otro dispositivo"},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
+            serializer = DispositivoSerializer(
+                dispositivo, 
+                data=request.data, 
+                partial=True,
+                context={'request': request}
+            )
             
-            serializer.save()
-            return Response(serializer.data)
+            if not serializer.is_valid():
+                return Response({
+                    'error': 'Datos de actualización inválidos',
+                    'details': serializer.errors
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            with transaction.atomic():
+                # Validación adicional de serial único
+                if 'serial' in request.data:
+                    new_serial = request.data['serial']
+                    if Dispositivo.objects.filter(serial=new_serial).exclude(id=dispositivo_id).exists():
+                        return Response(
+                            {"error": "El nuevo serial ya pertenece a otro dispositivo"},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                
+                dispositivo_actualizado = serializer.save()
+                
+                # Respuesta con datos completos
+                full_serializer = DispositivoSerializer(dispositivo_actualizado)
+                return Response(full_serializer.data)
+                
+        except IntegrityError as e:
+            logger.error(f"Error de integridad al actualizar dispositivo {dispositivo_id}: {str(e)}")
+            return Response(
+                {"error": "Error de integridad en la actualización"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         except Exception as e:
             logger.error(f"Error al actualizar dispositivo {dispositivo_id}: {str(e)}", exc_info=True)
             return Response(
@@ -593,24 +554,58 @@ def dispositivo_detail_view(request, dispositivo_id):
 
     elif request.method == 'DELETE':
         try:
-            dispositivo.delete()
-            return Response(
-                status=status.HTTP_204_NO_CONTENT
-            )
+            with transaction.atomic():
+                dispositivo.delete()
+                return Response(
+                    status=status.HTTP_204_NO_CONTENT
+                )
         except Exception as e:
             logger.error(f"Error al eliminar dispositivo {dispositivo_id}: {str(e)}", exc_info=True)
             return Response(
                 {"error": "Error interno al eliminar dispositivo"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-            
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def posiciones_por_sede_view(request, sede_id):
+    try:
+        # Validar que el ID sea un número entero
+        try:
+            sede_id_int = int(sede_id)
+            if sede_id_int <= 0:
+                raise ValueError("El ID debe ser positivo")
+        except ValueError:
+            return Response(
+                {"error": "El ID de sede debe ser un número entero positivo"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        posiciones = Posicion.objects.filter(sede_id=sede_id_int)\
+            .select_related('sede')\
+            .only('id', 'nombre', 'piso', 'sede')
+    
+        if not posiciones.exists():
+            return Response(
+                {"warning": f"No se encontraron posiciones para la sede ID {sede_id}"},
+                status=status.HTTP_200_OK
+            )
+        return Response([{
+            'id': p.id,
+            'nombre': p.nombre,
+            'piso': p.piso,
+            'sede_id': p.sede.id if p.sede else None,
+            'sede_nombre': p.sede.nombre if p.sede else 'Sin sede'
+        } for p in posiciones])
+        
+    except Exception as e:
+        logger.error(f"Error al obtener posiciones para sede {sede_id}: {str(e)}", exc_info=True)
+        return Response(
+            {"error": "Error interno al obtener posiciones"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 @api_view(['GET', 'POST'])
 @permission_classes([AllowAny])
 def servicios_view(request):
-    """
-    Maneja la creación y listado de servicios.
-    """
-
     if request.method == 'GET':
         # Obtener todos los servicios
         servicios = Servicios.objects.all()
@@ -639,14 +634,9 @@ def servicios_view(request):
             logger.error(f"Error al crear el servicio: {str(e)}")
             return Response({"error": "Ocurrió un error al crear el servicio."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-
-
 @api_view(['GET', 'PUT', 'DELETE'])
 @permission_classes([AllowAny])
 def servicio_detail_view(request, servicio_id):
-    """
-    Maneja la obtención, actualización y eliminación de un servicio específico.
-    """
     try:
         # Intentar obtener el servicio por su ID
         servicio = Servicios.objects.get(id=servicio_id)
@@ -686,15 +676,9 @@ def servicio_detail_view(request, servicio_id):
             logger.error(f"Error al eliminar el servicio: {str(e)}")
             return Response({"error": "Ocurrió un error al eliminar el servicio."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
-        
-        
-        
 @api_view(['GET', 'POST'])  # Asegúrate de incluir 'POST' aquí
 @permission_classes([AllowAny])
 def sede_view(request):
-    """
-    Maneja la creación y listado de sedes.
-    """
     if request.method == 'GET':
         # Listar todas las sedes
         sedes = Sede.objects.all()
@@ -720,14 +704,9 @@ def sede_view(request):
             logger.error(f"Error al crear la sede: {str(e)}")
             return Response({"error": "Ocurrió un error al crear la sede."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-
-
 @api_view(['GET', 'PUT', 'DELETE'])
 @permission_classes([AllowAny])
 def sede_detail_view(request, sede_id):
-    """
-    Maneja la obtención, actualización y eliminación de una sede específica.
-    """
     try:
         # Intentar obtener la sede por su ID
         sede = Sede.objects.get(id=sede_id)
@@ -769,7 +748,6 @@ def sede_detail_view(request, sede_id):
             return Response({"error": "Ocurrió un error al eliminar la sede."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
 # vistas para las posiciones
-
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def posiciones_view(request):
@@ -778,21 +756,11 @@ def posiciones_view(request):
 
     return Response(serializer.data, status=200)
 
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.response import Response
-from django.db.models import Count, Sum, Q, F, ExpressionWrapper, FloatField
-from datetime import datetime, timedelta
-from django.utils import timezone
-from .models import Sede, Dispositivo, Servicios, Posicion, Movimiento, Historial
-
 @api_view(['GET'])
 @permission_classes([]) 
 def dashboard_data(request):
-    # Obtener el parámetro de sede de la solicitud
     sede_id = request.query_params.get('sede')
     
-    # Filtrar dispositivos según el parámetro de sede
     if sede_id == "null":
         dispositivos = Dispositivo.objects.filter(sede__isnull=True)
     elif sede_id:
@@ -804,17 +772,15 @@ def dashboard_data(request):
     else:
         dispositivos = Dispositivo.objects.all()
 
-    # Contar dispositivos por estado (usando los valores exactos del modelo)
     total_dispositivos = dispositivos.count()
-    dispositivos_en_uso = dispositivos.filter(disponible='EN_USO').count()
+    dispositivos_en_uso = dispositivos.filter(estado_uso='EN_USO').count()
     dispositivos_buen_estado = dispositivos.filter(estado='BUENO').count()
-    dispositivos_disponibles = dispositivos.filter(disponible='DISPONIBLE').count()
+    dispositivos_disponibles = dispositivos.filter(estado_uso='DISPONIBLE').count()
     dispositivos_en_reparacion = dispositivos.filter(estado='REPARAR').count()
     dispositivos_perdidos = dispositivos.filter(estado='PERDIDO').count()
     dispositivos_mal_estado = dispositivos.filter(estado='MALO').count()
-    dispositivos_inhabilitados = dispositivos.filter(disponible='INHABILITADO').count()
+    dispositivos_inhabilitados = dispositivos.filter(estado_uso='INHABILITADO').count()
 
-    # Datos para tarjetas
     cardsData = [
         {
             "title": "Total dispositivos",
@@ -859,20 +825,6 @@ def dashboard_data(request):
     ]
 
     return Response({"cardsData": cardsData})
-
-from django.core.exceptions import ObjectDoesNotExist
-from thefuzz import process # type: ignore
-
-from django.core.exceptions import ObjectDoesNotExist
-from thefuzz import process  # type: ignore
-from rest_framework.decorators import api_view, parser_classes, permission_classes
-from rest_framework.parsers import MultiPartParser
-from django.http import JsonResponse
-import pandas as pd # type: ignore
-from django.db import transaction
-import logging
-
-logger = logging.getLogger(__name__)
 
 def encontrar_servicio_mas_parecido(nombre_servicio):
     if not nombre_servicio:
@@ -993,15 +945,6 @@ def importar_dispositivos(request):
         logger.error(f"Error inesperado: {str(e)}")
         return JsonResponse({'error': f"Error inesperado: {str(e)}"}, status=500)
 
-
-
-
-
-
-from .utils import importar_excel, exportar_excel
-from django.views.decorators.csrf import csrf_exempt
-
-
 @csrf_exempt
 def subir_excel(request):
     if request.method == "POST" and request.FILES.get("archivo"):
@@ -1011,15 +954,6 @@ def subir_excel(request):
 
 def descargar_excel(request):
     return exportar_excel()
-
-
-from rest_framework import status, generics # type: ignore
-from rest_framework.response import Response
-from rest_framework.permissions import AllowAny
-from rest_framework.decorators import api_view, permission_classes
-import time
-
-
 
 class PosicionListCreateView(generics.ListCreateAPIView):
     queryset = Posicion.objects.all()
@@ -1044,7 +978,6 @@ class PosicionListCreateView(generics.ListCreateAPIView):
             return Response(serializer.data, status=status.HTTP_201_CREATED)
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
 
 class PosicionRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Posicion.objects.all()
@@ -1076,7 +1009,6 @@ class PosicionRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView):
         instance.delete()
         return Response({"message": "Posici\u00f3n eliminada correctamente"}, status=status.HTTP_204_NO_CONTENT)
 
-
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_colores_pisos(request):
@@ -1084,27 +1016,6 @@ def get_colores_pisos(request):
         "colores": dict(Posicion.COLORES),
         "pisos": dict(Posicion.PISOS),
     })
-# api/views.py
-from rest_framework import viewsets, filters
-from rest_framework.decorators import action
-from rest_framework.response import Response
-from django_filters.rest_framework import DjangoFilterBackend # type: ignore
-from .models import Historial
-from .serializers import HistorialSerializer
-from django.db.models import Q
-from datetime import datetime, timedelta
-
-
-
-from rest_framework import viewsets, filters
-from rest_framework.decorators import action
-from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
-
-from django.db.models import Q
-from datetime import datetime, timedelta
-from .models import Historial, Dispositivo
-from .serializers import HistorialSerializer
 
 class HistorialViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [AllowAny]
@@ -1132,8 +1043,6 @@ class HistorialViewSet(viewsets.ReadOnlyModelViewSet):
         fecha_fin = self.request.query_params.get('fecha_fin')
         dispositivo_id = self.request.query_params.get('dispositivo_id')
         tipo_cambio = self.request.query_params.get('tipo_cambio')
-        
-        # Filtro por fechas con manejo de errores
         try:
             if fecha_inicio:
                 fecha_inicio_dt = datetime.strptime(fecha_inicio, '%Y-%m-%d')
@@ -1143,10 +1052,7 @@ class HistorialViewSet(viewsets.ReadOnlyModelViewSet):
                 fecha_fin_dt = datetime.strptime(fecha_fin, '%Y-%m-%d') + timedelta(days=1)
                 queryset = queryset.filter(fecha_modificacion__lte=fecha_fin_dt)
         except ValueError as e:
-            # Puedes loggear el error si es necesario
             pass
-            
-        # Filtro por dispositivo (ID exacto o búsqueda)
         if dispositivo_id:
             if dispositivo_id.isdigit():
                 queryset = queryset.filter(dispositivo__id=dispositivo_id)
@@ -1165,8 +1071,6 @@ class HistorialViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=False, methods=['get'])
     def opciones_filtro(self, request):
-        """Endpoint para obtener opciones de filtro"""
-        # Obtener dispositivos recientes (últimos 100)
         dispositivos = Dispositivo.objects.all().order_by('-id')[:100]
         
         return Response({
@@ -1184,9 +1088,7 @@ class HistorialViewSet(viewsets.ReadOnlyModelViewSet):
             'ordering_fields': self.ordering_fields,
             'search_fields': self.search_fields
         })
-# views.py
-from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework_simplejwt.exceptions import TokenError
+
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
@@ -1206,24 +1108,11 @@ def refresh_token_view(request):
         
     except TokenError as e:
         return Response({'error': str(e)}, status=401)
-    
-    
-    from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny
-from rest_framework.response import Response
-from django.db.models import Count
-from .models import Sede
-from django.views.decorators.csrf import csrf_exempt
-import logging
 
-logger = logging.getLogger(__name__)
-
+        
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def dispositivos_por_sede(request):
-    """
-    Vista corregida que usa el nombre correcto de la relación
-    """
     try:
         # Consulta corregida - usando 'dispositivos' en lugar de 'dispositivo'
         sedes_con_dispositivos = Sede.objects.annotate(
@@ -1247,3 +1136,18 @@ def dispositivos_por_sede(request):
             'success': False,
             'error': "Error al procesar la solicitud"
         }, status=500)
+        
+def dispositivo_choices(request):
+    return JsonResponse({
+        'TIPOS_DISPOSITIVOS': Dispositivo.TIPOS_DISPOSITIVOS,
+        'FABRICANTES': Dispositivo.FABRICANTES,
+        'ESTADO_DISPOSITIVO': Dispositivo.ESTADO_DISPOSITIVO,
+        'RAZONES_SOCIALES': Dispositivo.RAZONES_SOCIALES,
+        'SISTEMAS_OPERATIVOS': Dispositivo.SISTEMAS_OPERATIVOS,
+        'PROCESADORES': Dispositivo.PROCESADORES,
+        'UBICACIONES': Dispositivo.UBICACIONES,
+        'ESTADOS_PROPIEDAD': Dispositivo.ESTADOS_PROPIEDAD,
+        'CAPACIDADES_DISCO_DURO': Dispositivo.CAPACIDADES_DISCO_DURO,
+        'CAPACIDADES_MEMORIA_RAM': Dispositivo.CAPACIDADES_MEMORIA_RAM,
+        'ESTADO_USO': Dispositivo.ESTADO_USO,
+    })

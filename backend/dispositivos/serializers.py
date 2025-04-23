@@ -71,7 +71,7 @@ class PosicionSerializer(serializers.ModelSerializer):
 
 
 
-from rest_framework import serializers
+from rest_framework import serializers # type: ignore
 from .models import Dispositivo, Sede, Posicion
 
 class DispositivoSerializer(serializers.ModelSerializer):
@@ -321,3 +321,11 @@ class HistorialSerializer(serializers.ModelSerializer):
     def get_fecha_formateada(self, obj):
         return obj.fecha_modificacion.strftime("%d/%m/%Y %H:%M")
         
+        
+        
+from .models import Movimiento  # Asegúrate de que el modelo Movimiento exista
+
+class MovimientoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Movimiento
+        fields = '__all__'  # o los campos específicos que necesites

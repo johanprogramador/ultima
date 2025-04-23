@@ -17,7 +17,7 @@ Including another URLconf
 from django.contrib import admin  # type: ignore
 from django.urls import path, include  # type: ignore
 from dispositivos import views
-from rest_framework.routers import DefaultRouter
+from rest_framework.routers import DefaultRouter # type: ignore
 from dispositivos.views import RolUserViewSet, HistorialViewSet
 from dispositivos.views import dashboard_data
 from dispositivos.views import validate_token , obtener_datos_protegidos , importar_dispositivos, keepalive, refresh_token_view

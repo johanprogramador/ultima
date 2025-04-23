@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import axios from "axios"
-import { FaUser, FaEdit, FaPlus, FaSearch, FaChevronLeft, FaChevronRight } from "react-icons/fa"
+import { FaUser, FaEdit, FaPlus, FaSearch, FaChevronLeft, FaChevronRight, FaTimes } from "react-icons/fa"
 import "../styles/UsuariosExistentes.css"
 
 const UsuariosExistentes = () => {
@@ -11,44 +11,75 @@ const UsuariosExistentes = () => {
   const [selectedUser, setSelectedUser] = useState(null)
   const [showDetailModal, setShowDetailModal] = useState(false)
   const [showForm, setShowForm] = useState(false)
+  const [sedes, setSedes] = useState([])
+  const [selectedSedes, setSelectedSedes] = useState([])
   const [newUser, setNewUser] = useState({
     username: "",
     nombre: "",
     email: "",
     documento: "",
     celular: "",
-    rol: "coordinador", // Valor predeterminado según el modelo de Django
+    rol: "coordinador",
     password: "",
     confirm_password: "",
   })
   const [alert, setAlert] = useState({
     show: false,
     message: "",
-    type: "error", // Puede ser "error" o "success"
+    type: "error",
   })
-
-  // Estados para búsqueda y paginación
   const [searchTerm, setSearchTerm] = useState("")
   const [currentPage, setCurrentPage] = useState(1)
-  const [itemsPerPage, setItemsPerPage] = useState(6)
+  const [itemsPerPage] = useState(6)
   const [totalPages, setTotalPages] = useState(1)
 
-  const showAlert = (message, type = "error") => {
-    setAlert({ show: true, message, type })
-    setTimeout(() => setAlert({ show: false, message: "", type: "error" }), 3000)
-  }
-
-  // Efecto para ocultar la alerta después de 3 segundos
-  useEffect(() => {
-    if (alert.show) {
-      const timer = setTimeout(() => {
-        setAlert({ ...alert, show: false })
-      }, 1000) // 1000 ms = 1 segundo
-      return () => clearTimeout(timer) // Limpiar el timer si el componente se desmonta
+  const fetchSedes = useCallback(async () => {
+    try {
+      const response = await axios.get("http://127.0.0.1:8000/api/sedes/");
+      
+      // Manejar diferentes formatos de respuesta
+      let sedesData = [];
+      
+      if (Array.isArray(response.data)) {
+        // Si la respuesta es directamente un array
+        sedesData = response.data;
+      } else if (response.data.sedes) {
+        // Si la respuesta tiene propiedad 'sedes'
+        sedesData = response.data.sedes;
+      } else if (response.data.results) {
+        // Si usa paginación (propiedad 'results')
+        sedesData = response.data.results;
+      }
+      
+      console.log("Datos de sedes procesados:", sedesData);
+      setSedes(sedesData);
+      
+    } catch (error) {
+      console.error("Error al obtener sedes:", error);
+      showAlert("Error al cargar las sedes disponibles");
     }
-  }, [alert])
+  }, []);
 
-  // Aplicar filtros a los usuarios
+  const fetchUsers = useCallback(async () => {
+    try {
+      const response = await axios.get("http://127.0.0.1:8000/api/usuarios/")
+      const usersData = Array.isArray(response.data) ? response.data : []
+      
+      const usersWithSedes = usersData.map(user => ({
+        ...user,
+        sedes: user.sedes || []
+      }))
+      
+      setUsers(usersWithSedes)
+      applyFilters(usersWithSedes)
+    } catch (error) {
+      console.error("Error al obtener usuarios:", error)
+      showAlert("Error al cargar los usuarios")
+      setUsers([])
+      setFilteredUsers([])
+    }
+  }, [])
+
   const applyFilters = (usersData = users) => {
     let filtered = [...usersData]
 
@@ -60,7 +91,7 @@ const UsuariosExistentes = () => {
           (user.email && user.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
           (user.documento && user.documento.toLowerCase().includes(searchTerm.toLowerCase())) ||
           (user.celular && user.celular.toLowerCase().includes(searchTerm.toLowerCase())) ||
-          (user.rol && user.rol.toLowerCase().includes(searchTerm.toLowerCase())),
+          (user.rol && user.rol.toLowerCase().includes(searchTerm.toLowerCase()))
       )
     }
 
@@ -68,76 +99,57 @@ const UsuariosExistentes = () => {
     setTotalPages(Math.ceil(filtered.length / itemsPerPage))
   }
 
-  // Obtener los usuarios para la página actual
   const getCurrentPageItems = () => {
     const startIndex = (currentPage - 1) * itemsPerPage
     const endIndex = startIndex + itemsPerPage
     return filteredUsers.slice(startIndex, endIndex)
   }
 
-  // Calcular el rango de elementos mostrados
   const getItemRange = () => {
     const startItem = (currentPage - 1) * itemsPerPage + 1
     const endItem = Math.min(startItem + itemsPerPage - 1, filteredUsers.length)
     return `Mostrando ${startItem} a ${endItem} de ${filteredUsers.length} resultados`
   }
 
-  // Fetch the list of users
-  const fetchUsers = useCallback(async () => {
-    try {
-      const response = await axios.get("http://127.0.0.1:8000/api/usuarios/")
-      const usersData = Array.isArray(response.data) ? response.data : []
-      setUsers(usersData)
-      applyFilters(usersData)
-    } catch (error) {
-      console.error("Error al obtener usuarios:", error)
-      setUsers([])
-      setFilteredUsers([])
-    }
-  }, [])
-
-  // Fetch user details
   const fetchUserDetails = async (userId) => {
     try {
       const response = await axios.get(`http://127.0.0.1:8000/api/dusuarios/${userId}/`)
-      setSelectedUser(response.data)
+      const userData = response.data
+      
+      const userSedes = Array.isArray(userData.sedes) 
+        ? userData.sedes.map(sede => sede.id || sede) 
+        : []
+      
+      setSelectedUser(userData)
+      setSelectedSedes(userSedes)
       setShowDetailModal(true)
     } catch (error) {
       console.error("Error al obtener los detalles del usuario:", error)
+      showAlert("Error al cargar los detalles del usuario")
     }
   }
 
-  // Edit user
   const editUser = async (userId, updatedUserData) => {
     if (!updatedUserData.nombre || !updatedUserData.email || !updatedUserData.username) {
-      setAlert({
-        show: true,
-        message: "Por favor, complete todos los campos obligatorios.",
-        type: "error",
-      })
+      showAlert("Por favor, complete todos los campos obligatorios")
       return
     }
 
     try {
-      await axios.put(`http://127.0.0.1:8000/api/editusuarios/${userId}/`, updatedUserData)
-      setAlert({
-        show: true,
-        message: "Usuario editado exitosamente.",
-        type: "success",
+      await axios.put(`http://127.0.0.1:8000/api/editusuarios/${userId}/`, {
+        ...updatedUserData,
+        sedes: selectedSedes
       })
+      showAlert("Usuario editado exitosamente", "success")
       fetchUsers()
       setShowDetailModal(false)
     } catch (error) {
-      if (error.response && error.response.data) {
-        const errorMessages = Object.values(error.response.data).flat().join(" \n")
-        showAlert(errorMessages)
-      } else {
-        showAlert("Error al editar el usuario.")
-      }
+      console.error("Error al editar usuario:", error)
+      const errorMsg = error.response?.data?.error || "Error al editar el usuario"
+      showAlert(errorMsg)
     }
   }
 
-  // Toggle user status (activate/deactivate)
   const toggleUserStatus = async (userId, isActive) => {
     try {
       const endpoint = isActive
@@ -145,86 +157,99 @@ const UsuariosExistentes = () => {
         : `http://127.0.0.1:8000/api/activarusuarios/${userId}/`
 
       await axios.put(endpoint)
-      setAlert({
-        show: true,
-        message: `Usuario ${isActive ? "desactivado" : "activado"} exitosamente.`,
-        type: "success",
-      })
-      fetchUsers() // Refrescar la lista de usuarios después del cambio
+      showAlert(`Usuario ${isActive ? "desactivado" : "activado"} exitosamente`, "success")
+      fetchUsers()
     } catch (error) {
-      setAlert({
-        show: true,
-        message: "Error al cambiar el estado del usuario.",
-        type: "error",
-      })
-      const errorMessage = error.response?.data?.error || "Error al desactivar el usuario."
-      showAlert(errorMessage)
+      console.error("Error al cambiar estado del usuario:", error)
+      showAlert("Error al cambiar el estado del usuario")
     }
   }
 
-  // Add new user
   const addUser = async () => {
     if (!newUser.nombre || !newUser.email || !newUser.password || !newUser.username) {
-      setAlert({
-        show: true,
-        message: "Por favor, complete todos los campos obligatorios.",
-        type: "error",
-      })
+      showAlert("Por favor, complete todos los campos obligatorios")
       return
     }
 
     if (newUser.password !== newUser.confirm_password) {
-      setAlert({
-        show: true,
-        message: "Las contraseñas no coinciden.",
-        type: "error",
-      })
+      showAlert("Las contraseñas no coinciden")
+      return
+    }
+
+    if (newUser.rol !== "admin" && selectedSedes.length === 0) {
+      showAlert("Por favor, seleccione al menos una sede para el usuario")
       return
     }
 
     try {
-      const usuarioData = {
-        username: newUser.username,
-        nombre: newUser.nombre,
-        email: newUser.email,
-        documento: newUser.documento,
-        celular: newUser.celular,
-        rol: newUser.rol,
-        password: newUser.password,
-        confirm_password: newUser.confirm_password,
-      }
-
-      await axios.post("http://127.0.0.1:8000/api/register/", usuarioData)
-      setAlert({
-        show: true,
-        message: "Usuario agregado exitosamente.",
-        type: "success",
+      await axios.post("http://127.0.0.1:8000/api/register/", {
+        ...newUser,
+        sedes: selectedSedes
       })
+      
+      showAlert("Usuario agregado exitosamente", "success")
       setShowForm(false)
+      setNewUser({
+        username: "",
+        nombre: "",
+        email: "",
+        documento: "",
+        celular: "",
+        rol: "coordinador",
+        password: "",
+        confirm_password: "",
+      })
+      setSelectedSedes([])
       fetchUsers()
     } catch (error) {
-      setAlert({
-        show: true,
-        message: "Error al agregar el usuario.",
-        type: "error",
-      })
-      const errorMessage = error.response?.data?.error || "Error al agregar el usuario."
-      showAlert(errorMessage)
+      console.error("Error al agregar usuario:", error)
+      const errorMsg = error.response?.data?.error || "Error al agregar el usuario"
+      showAlert(errorMsg)
     }
   }
 
-  // Load users when component mounts
+  const handleSedeSelection = (sedeId) => {
+    setSelectedSedes(prev => 
+      prev.includes(sedeId) 
+        ? prev.filter(id => id !== sedeId) 
+        : [...prev, sedeId]
+    )
+  }
+
+  const selectAllSedes = () => {
+    if (selectedSedes.length === sedes.length) {
+      setSelectedSedes([])
+    } else {
+      setSelectedSedes(sedes.map(sede => sede.id))
+    }
+  }
+
+  const removeAllSedes = () => {
+    setSelectedSedes([])
+  }
+
+  const showAlert = (message, type = "error") => {
+    setAlert({ show: true, message, type })
+    setTimeout(() => setAlert({ show: false, message: "", type: "error" }), 3000)
+  }
+
+  const handleOverlayClick = (e) => {
+    if (e.target === e.currentTarget) {
+      setShowDetailModal(false)
+      setShowForm(false)
+    }
+  }
+
   useEffect(() => {
     fetchUsers()
-  }, [fetchUsers])
+    fetchSedes()
+  }, [fetchUsers, fetchSedes])
 
-  // Efecto para aplicar filtros cuando cambia el término de búsqueda
   useEffect(() => {
     applyFilters()
-    setCurrentPage(1) // Resetear a la primera página cuando cambia la búsqueda
+    setCurrentPage(1)
   }, [searchTerm])
 
-  // Componente de alerta
   const AlertModal = ({ message, type, onClose }) => {
     return (
       <div className="modal-overlay">
@@ -240,14 +265,6 @@ const UsuariosExistentes = () => {
     )
   }
 
-  // Manejador para cerrar el modal cuando se hace clic fuera de él
-  const handleOverlayClick = (e) => {
-    if (e.target === e.currentTarget) {
-      setShowDetailModal(false)
-      setShowForm(false)
-    }
-  }
-
   return (
     <div className="records-container">
       <div className="user-card">
@@ -258,7 +275,6 @@ const UsuariosExistentes = () => {
           </button>
         </div>
 
-        {/* Buscador */}
         <div className="search-container">
           <div className="search-input-container">
             <FaSearch className="search-icon" />
@@ -282,6 +298,13 @@ const UsuariosExistentes = () => {
                 <div className="user-info" onClick={() => fetchUserDetails(user.id)}>
                   <div className="user-name">{user.nombre}</div>
                   <div className="user-access">{user.rol === "admin" ? "Administrador" : "Coordinador"}</div>
+                  <div className="user-sedes">
+                    {user.sedes && user.sedes.length > 0 ? (
+                      `Sedes: ${user.sedes.map(sede => typeof sede === 'object' ? sede.nombre : sedes.find(s => s.id === sede)?.nombre).join(', ')}`
+                    ) : (
+                      "Sin sedes asignadas"
+                    )}
+                  </div>
                 </div>
                 <div className="user-actions">
                   <button className="action-button-modern edit" onClick={() => fetchUserDetails(user.id)}>
@@ -303,7 +326,6 @@ const UsuariosExistentes = () => {
           )}
         </div>
 
-        {/* Paginación */}
         {filteredUsers.length > 0 && (
           <div className="pagination-container">
             <div className="pagination-info">{getItemRange()}</div>
@@ -312,7 +334,6 @@ const UsuariosExistentes = () => {
                 onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
                 disabled={currentPage === 1}
                 className="pagination-arrow"
-                aria-label="Página anterior"
               >
                 <FaChevronLeft />
               </button>
@@ -320,177 +341,175 @@ const UsuariosExistentes = () => {
                 onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
                 disabled={currentPage === totalPages || totalPages === 0}
                 className="pagination-arrow"
-                aria-label="Página siguiente"
               >
                 <FaChevronRight />
               </button>
             </div>
-            <div className="pagination-progress-bar">
-              <div className="pagination-progress" style={{ width: `${(currentPage / totalPages) * 100}%` }}></div>
-            </div>
           </div>
         )}
 
-        {/* Modal para ver y editar detalles del usuario */}
-        {showDetailModal && selectedUser && (
+        {(showDetailModal || showForm) && (
           <div className="modal-overlay" onClick={handleOverlayClick}>
             <div className="modal-container modern-modal" onClick={(e) => e.stopPropagation()}>
-              <button className="close-button" onClick={() => setShowDetailModal(false)}>
-                &times;
+              <button className="close-button" onClick={() => showForm ? setShowForm(false) : setShowDetailModal(false)}>
+                <FaTimes />
               </button>
+              
               <div className="modal-content">
-                <h1 className="modal-title">Editar Usuario</h1>
+                <h1 className="modal-title">{showForm ? "Agregar Usuario" : "Editar Usuario"}</h1>
+                
                 <div className="input-group">
                   <label>Nombre completo *</label>
                   <input
                     type="text"
-                    value={selectedUser.nombre || ""}
-                    onChange={(e) => setSelectedUser({ ...selectedUser, nombre: e.target.value })}
+                    value={showForm ? newUser.nombre : selectedUser?.nombre || ""}
+                    onChange={(e) => showForm 
+                      ? setNewUser({...newUser, nombre: e.target.value}) 
+                      : setSelectedUser({...selectedUser, nombre: e.target.value})
+                    }
                   />
                 </div>
+                
                 <div className="input-group">
                   <label>Nombre de usuario *</label>
                   <input
                     type="text"
-                    value={selectedUser.username || ""}
-                    onChange={(e) => setSelectedUser({ ...selectedUser, username: e.target.value })}
+                    value={showForm ? newUser.username : selectedUser?.username || ""}
+                    onChange={(e) => showForm 
+                      ? setNewUser({...newUser, username: e.target.value}) 
+                      : setSelectedUser({...selectedUser, username: e.target.value})
+                    }
                   />
                 </div>
+                
                 <div className="input-group">
                   <label>Correo electrónico *</label>
                   <input
                     type="email"
-                    value={selectedUser.email || ""}
-                    onChange={(e) => setSelectedUser({ ...selectedUser, email: e.target.value })}
+                    value={showForm ? newUser.email : selectedUser?.email || ""}
+                    onChange={(e) => showForm 
+                      ? setNewUser({...newUser, email: e.target.value}) 
+                      : setSelectedUser({...selectedUser, email: e.target.value})
+                    }
                   />
                 </div>
-                <div className="input-group">
-                  <label>Documento de identidad</label>
-                  <input
-                    type="text"
-                    value={selectedUser.documento || ""}
-                    onChange={(e) => setSelectedUser({ ...selectedUser, documento: e.target.value })}
-                  />
-                </div>
-                <div className="input-group">
-                  <label>Número de celular</label>
-                  <input
-                    type="text"
-                    value={selectedUser.celular || ""}
-                    onChange={(e) => setSelectedUser({ ...selectedUser, celular: e.target.value })}
-                  />
-                </div>
+                
+                {showForm && (
+                  <>
+                    <div className="input-group">
+                      <label>Contraseña *</label>
+                      <input
+                        type="password"
+                        value={newUser.password}
+                        onChange={(e) => setNewUser({...newUser, password: e.target.value})}
+                      />
+                    </div>
+                    
+                    <div className="input-group">
+                      <label>Confirmar contraseña *</label>
+                      <input
+                        type="password"
+                        value={newUser.confirm_password}
+                        onChange={(e) => setNewUser({...newUser, confirm_password: e.target.value})}
+                      />
+                    </div>
+                  </>
+                )}
+                
                 <div className="input-group select-wrapper">
                   <label>Rol *</label>
                   <select
-                    value={selectedUser.rol || ""}
-                    onChange={(e) => setSelectedUser({ ...selectedUser, rol: e.target.value })}
+                    value={showForm ? newUser.rol : selectedUser?.rol || ""}
+                    onChange={(e) => showForm 
+                      ? setNewUser({...newUser, rol: e.target.value}) 
+                      : setSelectedUser({...selectedUser, rol: e.target.value})
+                    }
                   >
-                    <option value="" disabled>
-                      Seleccione un rol
-                    </option>
                     <option value="coordinador">Coordinador</option>
                     <option value="admin">Administrador</option>
                   </select>
                 </div>
-                <button className="create-button" onClick={() => editUser(selectedUser.id, selectedUser)}>
-                  Guardar cambios
+                
+                <div className="input-group">
+                  <label>Sedes asignadas {(showForm ? newUser.rol : selectedUser?.rol) !== "admin" && "*"}</label>
+                  
+                  <div className="sedes-selector-container">
+                    <div className="sedes-column">
+                      <h3>Sedes Disponibles</h3>
+                      <div className="sedes-list-container">
+                        <div className="select-all-container">
+                          <button 
+                            className="select-all-btn"
+                            onClick={selectAllSedes}
+                          >
+                            Seleccionar todos
+                          </button>
+                        </div>
+                        <div className="sedes-list">
+                          {sedes.map(sede => (
+                            <div 
+                              key={sede.id} 
+                              className={`sede-item ${selectedSedes.includes(sede.id) ? 'selected' : ''}`}
+                              onClick={() => handleSedeSelection(sede.id)}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selectedSedes.includes(sede.id)}
+                                readOnly
+                              />
+                              <span className="sede-info">
+                                <strong>{sede.nombre}</strong> - {sede.ciudad}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="sedes-column">
+                      <h3>Sedes Seleccionadas</h3>
+                      <div className="selected-sedes-container">
+                        <button 
+                          className="remove-all-btn"
+                          onClick={removeAllSedes}
+                        >
+                          Eliminar todos
+                        </button>
+                        <div className="selected-sedes-list">
+                          {selectedSedes.length > 0 ? (
+                            sedes
+                              .filter(sede => selectedSedes.includes(sede.id))
+                              .map(sede => (
+                                <div key={sede.id} className="selected-sede-item">
+                                  {sede.nombre} - {sede.ciudad}
+                                </div>
+                              ))
+                          ) : (
+                            <div className="no-sedes-selected">No hay sedes seleccionadas</div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                
+                <button 
+                  className="create-button" 
+                  onClick={showForm ? addUser : () => editUser(selectedUser.id, selectedUser)}
+                >
+                  {showForm ? "Agregar Usuario" : "Guardar Cambios"}
                 </button>
               </div>
             </div>
           </div>
         )}
 
-        {/* Modal para agregar nuevo usuario */}
-        {showForm && (
-          <div className="modal-overlay" onClick={handleOverlayClick}>
-            <div className="modal-container modern-modal" onClick={(e) => e.stopPropagation()}>
-              <button className="close-button" onClick={() => setShowForm(false)}>
-                &times;
-              </button>
-              <div className="modal-content">
-                <h1 className="modal-title">Agregar Usuario</h1>
-                <div className="input-group">
-                  <label>Nombre de usuario</label>
-                  <input
-                    type="text"
-                    placeholder="Nombre de usuario"
-                    value={newUser.username}
-                    onChange={(e) => setNewUser({ ...newUser, username: e.target.value })}
-                  />
-                </div>
-                <div className="input-group">
-                  <label>Nombre completo</label>
-                  <input
-                    type="text"
-                    placeholder="Nombre completo"
-                    value={newUser.nombre}
-                    onChange={(e) => setNewUser({ ...newUser, nombre: e.target.value })}
-                  />
-                </div>
-                <div className="input-group">
-                  <label>Correo electrónico</label>
-                  <input
-                    type="email"
-                    placeholder="Correo electrónico"
-                    value={newUser.email}
-                    onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
-                  />
-                </div>
-                <div className="input-group">
-                  <label>Documento de identidad</label>
-                  <input
-                    type="text"
-                    placeholder="Documento de identidad"
-                    value={newUser.documento}
-                    onChange={(e) => setNewUser({ ...newUser, documento: e.target.value })}
-                  />
-                </div>
-                <div className="input-group">
-                  <label>Número de celular</label>
-                  <input
-                    type="text"
-                    placeholder="Número de celular"
-                    value={newUser.celular}
-                    onChange={(e) => setNewUser({ ...newUser, celular: e.target.value })}
-                  />
-                </div>
-                <div className="input-group">
-                  <label>Contraseña</label>
-                  <input
-                    type="password"
-                    placeholder="Contraseña"
-                    value={newUser.password}
-                    onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
-                  />
-                </div>
-                <div className="input-group">
-                  <label>Confirmar contraseña</label>
-                  <input
-                    type="password"
-                    placeholder="Confirmar contraseña"
-                    value={newUser.confirm_password}
-                    onChange={(e) => setNewUser({ ...newUser, confirm_password: e.target.value })}
-                  />
-                </div>
-                <div className="input-group select-wrapper">
-                  <label>Rol</label>
-                  <select value={newUser.rol} onChange={(e) => setNewUser({ ...newUser, rol: e.target.value })}>
-                    <option value="coordinador">Coordinador</option>
-                    <option value="admin">Administrador</option>
-                  </select>
-                </div>
-                <button className="create-button" onClick={addUser}>
-                  Agregar
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Mostrar alerta */}
         {alert.show && (
-          <AlertModal message={alert.message} type={alert.type} onClose={() => setAlert({ ...alert, show: false })} />
+          <AlertModal 
+            message={alert.message} 
+            type={alert.type} 
+            onClose={() => setAlert({ ...alert, show: false })} 
+          />
         )}
       </div>
     </div>
@@ -498,4 +517,3 @@ const UsuariosExistentes = () => {
 }
 
 export default UsuariosExistentes
-

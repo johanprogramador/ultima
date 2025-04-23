@@ -39,7 +39,7 @@
         };
 
         setupListeners();
-        const keepaliveInterval = setInterval(keepalive, 240000); // 4 minutos
+        const keepaliveInterval = setInterval(keepalive, 350000); // 4 minutos
 
         return () => {
         events.forEach(event => {
