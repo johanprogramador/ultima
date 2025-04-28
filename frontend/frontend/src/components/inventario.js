@@ -95,6 +95,7 @@ const Inventario = () => {
 
   useEffect(() => {
     const cargarDatos = async () => {
+      const sedesData = await fetchSedes()
       await fetchDispositivos()
     }
 
