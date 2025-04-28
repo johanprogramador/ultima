@@ -469,22 +469,31 @@ function FloorPlan() {
         if (dispositivosResponse.data) {
           if (Array.isArray(dispositivosResponse.data)) {
             dispositivosData = dispositivosResponse.data
-          } else if (dispositivosResponse.data.data && Array.isArray(dispositivosResponse.data.data)) {
-            // Si los datos están en un campo 'data'
-            dispositivosData = dispositivosResponse.data.data
+            console.log("Datos de dispositivos recibidos como array:", dispositivosData.length)
           } else if (dispositivosResponse.data.results && Array.isArray(dispositivosResponse.data.results)) {
             dispositivosData = dispositivosResponse.data.results
+            console.log("Datos de dispositivos recibidos como paginación:", dispositivosData.length)
+          } else if (dispositivosResponse.data.data && Array.isArray(dispositivosResponse.data.data)) {
+            // Extraer datos del campo 'data' si existe
+            dispositivosData = dispositivosResponse.data.data
+            console.log("Datos de dispositivos extraídos del campo 'data':", dispositivosData.length)
           } else {
             console.log("Formato de respuesta inesperado para dispositivos:", dispositivosResponse.data)
             // Intentar extraer datos de cualquier forma posible
             if (typeof dispositivosResponse.data === "object") {
               console.log("Intentando extraer dispositivos de objeto:", Object.keys(dispositivosResponse.data))
-              if (dispositivosResponse.data.data && Array.isArray(dispositivosResponse.data.data)) {
+              // Si es un objeto, intentar convertirlo a array
+              if (dispositivosResponse.data.data) {
                 dispositivosData = dispositivosResponse.data.data
+              } else {
+                dispositivosData = Object.values(dispositivosResponse.data)
               }
             }
           }
         }
+
+        // Asegurarse de que todos los dispositivos tengan un ID válido
+        dispositivosData = dispositivosData.filter((d) => d && d.id)
 
         console.log("Dispositivos procesados:", dispositivosData)
         setAllDevices(dispositivosData)
@@ -503,16 +512,16 @@ function FloorPlan() {
 
         // Crear dispositivos de prueba si hay error
         const mockDevices = [
-          { id: 1, nombre: "Dispositivo 1", serial: "SN001", modelo: "Modelo A" },
-          { id: 2, nombre: "Dispositivo 2", serial: "SN002", modelo: "Modelo B" },
-          { id: 3, nombre: "Dispositivo 3", serial: "SN003", modelo: "Modelo C" },
-          { id: 4, nombre: "Dispositivo 4", serial: "SN004", modelo: "Modelo D" },
-          { id: 5, nombre: "Dispositivo 5", serial: "SN005", modelo: "Modelo E" },
-          { id: 6, nombre: "Dispositivo 6", serial: "SN006", modelo: "Modelo F" },
-          { id: 7, nombre: "Dispositivo 7", serial: "SN007", modelo: "Modelo G" },
-          { id: 8, nombre: "Dispositivo 8", serial: "SN008", modelo: "Modelo H" },
-          { id: 9, nombre: "Dispositivo 9", serial: "SN009", modelo: "Modelo I" },
-          { id: 10, nombre: "Dispositivo 10", serial: "SN010", modelo: "Modelo J" },
+          { id: 1, nombre: "Dispositivo 1", serial: "SN001", modelo: "Modelo A", sede: 1 },
+          { id: 2, nombre: "Dispositivo 2", serial: "SN002", modelo: "Modelo B", sede: 1 },
+          { id: 3, nombre: "Dispositivo 3", serial: "SN003", modelo: "Modelo C", sede: 2 },
+          { id: 4, nombre: "Dispositivo 4", serial: "SN004", modelo: "Modelo D", sede: 2 },
+          { id: 5, nombre: "Dispositivo 5", serial: "SN005", modelo: "Modelo E", sede: 3 },
+          { id: 6, nombre: "Dispositivo 6", serial: "SN006", modelo: "Modelo F", sede: 3 },
+          { id: 7, nombre: "Dispositivo 7", serial: "SN007", modelo: "Modelo G", sede: 1 },
+          { id: 8, nombre: "Dispositivo 8", serial: "SN008", modelo: "Modelo H", sede: 2 },
+          { id: 9, nombre: "Dispositivo 9", serial: "SN009", modelo: "Modelo I", sede: 3 },
+          { id: 10, nombre: "Dispositivo 10", serial: "SN010", modelo: "Modelo J", sede: 1 },
         ]
         console.log("Usando dispositivos de prueba:", mockDevices)
         setAllDevices(mockDevices)
@@ -601,22 +610,19 @@ function FloorPlan() {
 
   // Función para obtener dispositivos disponibles (no asignados a otras posiciones)
   const getAvailableDevices = (currentPositionId) => {
-    // Si no hay ID de posición actual, devolver todos los dispositivos no asignados
-    if (!currentPositionId) {
-      return allDevices.filter((device) => !assignedDevices[device.id])
-    }
+    // Obtener la sede de la posición actual
+    const currentSede = newPosition.sede
 
-    // Si hay ID de posición, devolver dispositivos no asignados o asignados a esta posición
-    return allDevices.filter(
-      (device) => !assignedDevices[device.id] || assignedDevices[device.id] === currentPositionId,
-    )
-  }
+    // Filtrar dispositivos por sede y disponibilidad
+    return allDevices.filter((device) => {
+      // Verificar si el dispositivo pertenece a la misma sede
+      const isSameSede = !currentSede || !device.sede || device.sede == currentSede
 
-  // Función para obtener el nombre de un dispositivo
-  const getDeviceName = (deviceId) => {
-    const device = allDevices.find(d => d.id === deviceId || d.id === Number(deviceId))
-    if (!device) return `Dispositivo ${deviceId}`
-    return device.serial || device.nombre || device.modelo || `Dispositivo ${deviceId}`
+      // Verificar disponibilidad (no asignado o asignado a esta posición)
+      const isAvailable = !assignedDevices[device.id] || assignedDevices[device.id] === currentPositionId
+
+      return isSameSede && isAvailable
+    })
   }
 
   // Reemplazar la función fetchPositions para manejar mejor los datos recibidos
@@ -1183,14 +1189,12 @@ function FloorPlan() {
       // Convertir explícitamente los tipos de datos
       const fila = Number.parseInt(newPosition.fila, 10)
 
-      // Normalizar los dispositivos - asegurarse de que es un array y contiene solo IDs
+      // Normalizar los dispositivos - asegurarse de que es un array y contiene solo IDs válidos
       const normalizedDispositivos = Array.isArray(newPosition.dispositivos)
         ? newPosition.dispositivos
-            .filter(d => d !== null && d !== undefined) // Filtrar valores nulos o undefined
+            .filter((d) => d !== null && d !== undefined) // Filtrar valores nulos o undefined
             .map((d) => (typeof d === "object" ? d.id : Number(d)))
-        : newPosition.dispositivos && newPosition.dispositivos !== null
-          ? [typeof newPosition.dispositivos === "object" ? newPosition.dispositivos.id : Number(newPosition.dispositivos)]
-          : []
+        : []
 
       // Crear objeto con estructura completa incluyendo todos los campos requeridos
       const dataToSend = {
@@ -1226,6 +1230,9 @@ function FloorPlan() {
                 col: cell.col,
               }))
             : [{ row: fila, col: newPosition.columna }],
+        // Añadir un campo para indicar que no se debe crear un movimiento
+        no_crear_movimiento: true,
+        no_validar_usuario: true,
       }
 
       // Si es edición, agregar el ID
@@ -2067,6 +2074,12 @@ function FloorPlan() {
 
   // Renderizar la tabla de todas las posiciones
   const renderAllPositionsTable = () => {
+    // Función para obtener el nombre del dispositivo por ID
+    const getDeviceName = (deviceId) => {
+      const device = allDevices.find((d) => d.id === Number(deviceId) || d.id === deviceId)
+      return device ? device.nombre : `Dispositivo ${deviceId}`
+    }
+
     return (
       <div className="all-positions-table">
         <table className="table">
@@ -2587,14 +2600,18 @@ function FloorPlan() {
                   {/* Columna de dispositivos disponibles */}
                   <div style={{ flex: 1, border: "1px solid #444", borderRadius: "4px", overflow: "hidden" }}>
                     <div style={{ background: "#333", padding: "8px", borderBottom: "1px solid #444" }}>
-                      <h4 style={{ margin: 0, fontSize: "14px", color: "#fff" }}>Dispositivos Disponibles</h4>
+                      <h4 style={{ margin: 0, fontSize: "14px", color: "#fff" }}>
+                        Dispositivos Disponibles {newPosition.sede ? `(Sede: ${getSedeName(newPosition.sede)})` : ""}
+                      </h4>
                     </div>
                     <div style={{ maxHeight: "200px", overflowY: "auto", background: "#222" }}>
                       {filterDevices(getAvailableDevices(newPosition.id), deviceSearchTerm).length === 0 ? (
                         <div style={{ padding: "10px", color: "#888", textAlign: "center" }}>
                           {deviceSearchTerm
                             ? "No se encontraron dispositivos con ese término"
-                            : "No hay dispositivos disponibles"}
+                            : newPosition.sede
+                              ? "No hay dispositivos disponibles para esta sede"
+                              : "No hay dispositivos disponibles"}
                         </div>
                       ) : (
                         <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
@@ -2681,43 +2698,48 @@ function FloorPlan() {
                         </div>
                       ) : (
                         <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-                          {newPosition.dispositivos.map((id) => (
-                            <li
-                              key={id}
-                              style={{
-                                display: "flex",
-                                justifyContent: "space-between",
-                                alignItems: "center",
-                                padding: "8px 12px",
-                                borderBottom: "1px solid #333",
-                              }}
-                            >
-                              <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis" }}>
-                                {getDeviceName(id)}
-                              </span>
-                              <button
-                                type="button"
+                          {newPosition.dispositivos.map((id) => {
+                            const device = allDevices.find((d) => d.id === id || d.id === Number(id))
+                            return (
+                              <li
+                                key={id}
                                 style={{
-                                  backgroundColor: "transparent",
-                                  border: "none",
-                                  width: "24px",
-                                  height: "24px",
-                                  borderRadius: "50%",
                                   display: "flex",
+                                  justifyContent: "space-between",
                                   alignItems: "center",
-                                  justifyContent: "center",
-                                  cursor: "pointer",
-                                  fontWeight: "bold",
-                                  fontSize: "16px",
-                                  color: "#F44336",
+                                  padding: "8px 12px",
+                                  borderBottom: "1px solid #333",
                                 }}
-                                onClick={() => removeDeviceFromPosition(id)}
-                                title="Quitar dispositivo"
                               >
-                                ×
-                              </button>
-                            </li>
-                          ))}
+                                <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis" }}>
+                                  {device
+                                    ? device.serial || device.nombre || device.modelo || `Dispositivo ${id}`
+                                    : `Dispositivo ${id}`}
+                                </span>
+                                <button
+                                  type="button"
+                                  style={{
+                                    backgroundColor: "transparent",
+                                    border: "none",
+                                    width: "24px",
+                                    height: "24px",
+                                    borderRadius: "50%",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    cursor: "pointer",
+                                    fontWeight: "bold",
+                                    fontSize: "16px",
+                                    color: "#F44336",
+                                  }}
+                                  onClick={() => removeDeviceFromPosition(id)}
+                                  title="Quitar dispositivo"
+                                >
+                                  ×
+                                </button>
+                              </li>
+                            )
+                          })}
                         </ul>
                       )}
                     </div>

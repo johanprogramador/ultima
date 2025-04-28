@@ -147,13 +147,11 @@ def login_user(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
         
-@api_view(['GET'])  # Cambiado a GET ya que no recibe datos
+@api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def keepalive(request):
     request.session['last_activity'] = timezone.now().isoformat()
     request.session.save()
-    
-    # Devolver información útil del usuario
     return Response({
         "status": "active",
         "user": {
