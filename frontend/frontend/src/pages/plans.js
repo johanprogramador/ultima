@@ -431,6 +431,7 @@ function FloorPlan() {
   const [zoomLevel, setZoomLevel] = useState(1)
   const [selectedPiso, setSelectedPiso] = useState("PISO1")
   const [searchTerm, setSearchTerm] = useState("")
+  const [deviceSearchTerm, setDeviceSearchTerm] = useState("") // Búsqueda de dispositivos
   const [selectionStart, setSelectionStart] = useState(null)
   const [selectionEnd, setSelectionEnd] = useState(null)
   const [isSelecting, setIsSelecting] = useState(false)
@@ -439,63 +440,128 @@ function FloorPlan() {
   const tableContainerRef = useRef(null)
   const [defaultDeviceId, setDefaultDeviceId] = useState(null)
   const [showAllPositions, setShowAllPositions] = useState(false)
+  const [allDevices, setAllDevices] = useState([]) // Todos los dispositivos disponibles
+  const [assignedDevices, setAssignedDevices] = useState({}) // Mapa de dispositivos asignados: {deviceId: positionId}
 
   // Modificar el estado viewMode para incluir las estadísticas como un modo de visualización
-  // Cambiar:
-  //const [viewMode, setViewMode] = useState("plano") // "plano" o "tabla"
-  //const [showStats, setShowStats] = useState(false)
-
-  // Por:
   const [viewMode, setViewMode] = useState("plano") // "plano", "tabla" o "estadisticas"
-  // Eliminamos el estado showStats ya que ahora usaremos viewMode para todo
 
   // Estados para los selectores
   const [servicios, setServicios] = useState([])
   const [sedes, setSedes] = useState([])
-  const [dispositivos, setDispositivos] = useState([]); // Inicializa como array vacío
 
   // Nuevo estado para el filtro de servicio en las estadísticas
   const [selectedService, setSelectedService] = useState("")
 
-  // Nuevo estado para controlar la visibilidad del panel de estadísticas
-  //const [showStats, setShowStats] = useState(false)
-
   // Función para cargar los datos de los selectores
-  // En la función fetchSelectorData, verifica la respuesta de la API:
   const fetchSelectorData = async () => {
     try {
-      const [serviciosResponse, sedesResponse, dispositivosResponse] = await Promise.all([
-        axios.get(`${API_URL}api/servicios/`),
-        axios.get(`${API_URL}api/sedes/`),
-        axios.get(`${API_URL}api/dispositivos/`),
-      ]);
-  
-      setServicios(serviciosResponse.data || []);
-      setSedes(sedesResponse.data || []);
-      
-      // Asegurarse de que dispositivos es un array
-      let dispositivosData = [];
-      if (dispositivosResponse.data) {
-        if (Array.isArray(dispositivosResponse.data)) {
-          dispositivosData = dispositivosResponse.data;
-        } else if (dispositivosResponse.data.results && Array.isArray(dispositivosResponse.data.results)) {
-          // Manejar paginación si la API la usa
-          dispositivosData = dispositivosResponse.data.results;
+      console.log("Iniciando carga de datos desde API...")
+
+      // Cargar dispositivos con manejo de errores detallado
+      try {
+        console.log("Solicitando dispositivos desde:", `${API_URL}api/dispositivos/`)
+        const dispositivosResponse = await axios.get(`${API_URL}api/dispositivos/`)
+        console.log("Respuesta completa de dispositivos:", dispositivosResponse)
+
+        // Procesar los dispositivos con más detalle
+        let dispositivosData = []
+        if (dispositivosResponse.data) {
+          if (Array.isArray(dispositivosResponse.data)) {
+            dispositivosData = dispositivosResponse.data
+          } else if (dispositivosResponse.data.data && Array.isArray(dispositivosResponse.data.data)) {
+            // Si los datos están en un campo 'data'
+            dispositivosData = dispositivosResponse.data.data
+          } else if (dispositivosResponse.data.results && Array.isArray(dispositivosResponse.data.results)) {
+            dispositivosData = dispositivosResponse.data.results
+          } else {
+            console.log("Formato de respuesta inesperado para dispositivos:", dispositivosResponse.data)
+            // Intentar extraer datos de cualquier forma posible
+            if (typeof dispositivosResponse.data === "object") {
+              console.log("Intentando extraer dispositivos de objeto:", Object.keys(dispositivosResponse.data))
+              if (dispositivosResponse.data.data && Array.isArray(dispositivosResponse.data.data)) {
+                dispositivosData = dispositivosResponse.data.data
+              }
+            }
+          }
         }
+
+        console.log("Dispositivos procesados:", dispositivosData)
+        setAllDevices(dispositivosData)
+
+        if (dispositivosData.length > 0) {
+          console.log("Estableciendo dispositivo por defecto:", dispositivosData[0])
+          setDefaultDeviceId(dispositivosData[0].id)
+        } else {
+          console.warn("No se encontraron dispositivos disponibles")
+        }
+      } catch (error) {
+        console.error("Error específico al cargar dispositivos:", error)
+        if (error.response) {
+          console.error("Respuesta de error:", error.response.status, error.response.data)
+        }
+
+        // Crear dispositivos de prueba si hay error
+        const mockDevices = [
+          { id: 1, nombre: "Dispositivo 1", serial: "SN001", modelo: "Modelo A" },
+          { id: 2, nombre: "Dispositivo 2", serial: "SN002", modelo: "Modelo B" },
+          { id: 3, nombre: "Dispositivo 3", serial: "SN003", modelo: "Modelo C" },
+          { id: 4, nombre: "Dispositivo 4", serial: "SN004", modelo: "Modelo D" },
+          { id: 5, nombre: "Dispositivo 5", serial: "SN005", modelo: "Modelo E" },
+          { id: 6, nombre: "Dispositivo 6", serial: "SN006", modelo: "Modelo F" },
+          { id: 7, nombre: "Dispositivo 7", serial: "SN007", modelo: "Modelo G" },
+          { id: 8, nombre: "Dispositivo 8", serial: "SN008", modelo: "Modelo H" },
+          { id: 9, nombre: "Dispositivo 9", serial: "SN009", modelo: "Modelo I" },
+          { id: 10, nombre: "Dispositivo 10", serial: "SN010", modelo: "Modelo J" },
+        ]
+        console.log("Usando dispositivos de prueba:", mockDevices)
+        setAllDevices(mockDevices)
+        setDefaultDeviceId(1)
       }
-  
-      console.log("Dispositivos recibidos:", dispositivosData);
-      setDispositivos(dispositivosData);
-  
-      if (dispositivosData.length > 0) {
-        setDefaultDeviceId(dispositivosData[0].id);
+
+      // Cargar servicios y sedes
+      try {
+        const [serviciosResponse, sedesResponse] = await Promise.all([
+          axios.get(`${API_URL}api/servicios/`),
+          axios.get(`${API_URL}api/sedes/`),
+        ])
+
+        console.log("Respuesta de servicios:", serviciosResponse.data)
+        console.log("Respuesta de sedes:", sedesResponse.data)
+
+        setServicios(serviciosResponse.data || [])
+        setSedes(sedesResponse.data || [])
+      } catch (error) {
+        console.error("Error al cargar servicios o sedes:", error)
+        setServicios([])
+        setSedes([])
       }
     } catch (error) {
-      console.error("Error al cargar dispositivos:", error);
-      setDispositivos([]); // Asegurar que sea array incluso en error
-      showNotification("Error al cargar dispositivos", "error");
+      console.error("Error general al cargar datos:", error)
+      showNotification("Error al cargar datos del servidor", "error")
     }
-  };
+  }
+
+  // Función para actualizar el mapa de dispositivos asignados
+  const updateAssignedDevices = (positionsData) => {
+    const assignedMap = {}
+
+    // Recorrer todas las posiciones y registrar qué dispositivos están asignados a cada una
+    Object.values(positionsData).forEach((position) => {
+      if (position.dispositivos && position.dispositivos.length > 0) {
+        // Normalizar los dispositivos a un array de IDs
+        const deviceIds = position.dispositivos.map((d) => (typeof d === "object" ? d.id : Number(d)))
+
+        // Registrar cada dispositivo con su posición asignada
+        deviceIds.forEach((deviceId) => {
+          assignedMap[deviceId] = position.id
+        })
+      }
+    })
+
+    console.log("Mapa de dispositivos asignados actualizado:", assignedMap)
+    setAssignedDevices(assignedMap)
+  }
 
   // Cargar datos iniciales
   useEffect(() => {
@@ -503,8 +569,6 @@ function FloorPlan() {
     fetchPositions()
   }, []) // Ya no depende de selectedPiso para cargar todas las posiciones
 
-
-  
   // Función para obtener el color del servicio por ID
   const getServiceColor = (serviceId) => {
     if (!serviceId) return COLOR_DEFAULT
@@ -533,6 +597,26 @@ function FloorPlan() {
   const getPisoName = (pisoValue) => {
     const piso = PISOS.find((p) => p.value === pisoValue)
     return piso ? piso.label : pisoValue
+  }
+
+  // Función para obtener dispositivos disponibles (no asignados a otras posiciones)
+  const getAvailableDevices = (currentPositionId) => {
+    // Si no hay ID de posición actual, devolver todos los dispositivos no asignados
+    if (!currentPositionId) {
+      return allDevices.filter((device) => !assignedDevices[device.id])
+    }
+
+    // Si hay ID de posición, devolver dispositivos no asignados o asignados a esta posición
+    return allDevices.filter(
+      (device) => !assignedDevices[device.id] || assignedDevices[device.id] === currentPositionId,
+    )
+  }
+
+  // Función para obtener el nombre de un dispositivo
+  const getDeviceName = (deviceId) => {
+    const device = allDevices.find(d => d.id === deviceId || d.id === Number(deviceId))
+    if (!device) return `Dispositivo ${deviceId}`
+    return device.serial || device.nombre || device.modelo || `Dispositivo ${deviceId}`
   }
 
   // Reemplazar la función fetchPositions para manejar mejor los datos recibidos
@@ -596,11 +680,11 @@ function FloorPlan() {
                     leftDouble: false,
                   },
 
-            // Asegurar que dispositivos sea un array
+            // Asegurar que dispositivos sea un array y normalizar los valores
             dispositivos: Array.isArray(pos.dispositivos)
-              ? pos.dispositivos
+              ? pos.dispositivos.map((d) => (typeof d === "object" ? d.id : Number(d)))
               : pos.dispositivos
-                ? [pos.dispositivos]
+                ? [typeof pos.dispositivos === "object" ? pos.dispositivos.id : Number(pos.dispositivos)]
                 : [],
 
             // Asegurar otros campos básicos
@@ -628,6 +712,9 @@ function FloorPlan() {
 
       console.log("Posiciones procesadas:", Object.keys(positionsObj).length)
       setPositions(positionsObj)
+
+      // Actualizar el mapa de dispositivos asignados
+      updateAssignedDevices(positionsObj)
     } catch (error) {
       console.error("Error al obtener posiciones:", error)
       if (error.response) {
@@ -656,7 +743,7 @@ function FloorPlan() {
 
     try {
       // 1. Verificar que tengamos dispositivos disponibles
-      if (dispositivos.length === 0) {
+      if (allDevices.length === 0) {
         showNotification(
           "Error: No hay dispositivos disponibles en el sistema. Debe crear al menos un dispositivo antes de importar.",
           "error",
@@ -666,7 +753,7 @@ function FloorPlan() {
       }
 
       // Obtener el primer dispositivo disponible para usar como valor por defecto
-      const defaultDevice = dispositivos[0].id
+      const defaultDevice = allDevices[0].id
       console.log("Dispositivo por defecto para importación:", defaultDevice)
 
       // 2. Preguntar al usuario si desea eliminar las posiciones existentes
@@ -760,7 +847,7 @@ function FloorPlan() {
               colorOriginal: colorInfo.originalColor,
               piso: selectedPiso,
               mergedCells: mergedCells,
-              dispositivos: [defaultDevice], // Usar el dispositivo por defecto
+              dispositivos: [], // Inicialmente sin dispositivos
               borde: false,
               bordeDoble: false,
               bordeDetalle: {
@@ -854,7 +941,7 @@ function FloorPlan() {
                 colorOriginal: colorInfo.originalColor,
                 piso: selectedPiso,
                 mergedCells: [{ row: actualRow, col: colLetter }],
-                dispositivos: [defaultDevice], // Usar el dispositivo por defecto
+                dispositivos: [], // Inicialmente sin dispositivos
                 borde: false,
                 bordeDoble: false,
                 bordeDetalle: {
@@ -905,10 +992,11 @@ function FloorPlan() {
           }
 
           // 11. Actualizar el estado con las nuevas posiciones
-          setPositions((prev) => ({
-            ...prev,
-            ...newPositions,
-          }))
+          setPositions((prev) => {
+            const updated = { ...prev, ...newPositions }
+            updateAssignedDevices(updated)
+            return updated
+          })
 
           // 12. Mostrar resumen final
           const resultMessage = `Importación completada: ${savedCount} posiciones guardadas${
@@ -939,7 +1027,7 @@ function FloorPlan() {
     }
   }
 
-  // Reemplazar la función exportToExcel with this nueva implementación
+  // Función para exportar a Excel
   const exportToExcel = () => {
     try {
       setLoading(true)
@@ -1083,108 +1171,107 @@ function FloorPlan() {
     }
   }
 
-  // Reemplazar la función savePosition with this versión mejorada
+  // Función para guardar una posición
   const savePosition = async () => {
     try {
-        // Verificar si tenemos un dispositivo por defecto
-        if ((!newPosition.dispositivos || newPosition.dispositivos.length === 0) && !defaultDeviceId && dispositivos.length === 0) {
-            showNotification("No hay dispositivos disponibles para asignar a la posición", "error");
-            return;
-        }
+      // Validar que no se excedan 5 dispositivos por posición
+      if (newPosition.dispositivos.length > 5) {
+        showNotification("No se pueden asignar más de 5 dispositivos a una posición", "error")
+        return
+      }
 
-        // Convertir explícitamente los tipos de datos
-        const fila = Number.parseInt(newPosition.fila, 10);
+      // Convertir explícitamente los tipos de datos
+      const fila = Number.parseInt(newPosition.fila, 10)
 
-        // Normalizar los dispositivos - asegurarse de que es un array y contiene solo IDs
-        const normalizedDispositivos = Array.isArray(newPosition.dispositivos)
-            ? newPosition.dispositivos.map(d => typeof d === 'object' ? d.id : d)
-            : newPosition.dispositivos
-                ? [newPosition.dispositivos]
-                : defaultDeviceId
-                    ? [defaultDeviceId]
-                    : [];
+      // Normalizar los dispositivos - asegurarse de que es un array y contiene solo IDs
+      const normalizedDispositivos = Array.isArray(newPosition.dispositivos)
+        ? newPosition.dispositivos
+            .filter(d => d !== null && d !== undefined) // Filtrar valores nulos o undefined
+            .map((d) => (typeof d === "object" ? d.id : Number(d)))
+        : newPosition.dispositivos && newPosition.dispositivos !== null
+          ? [typeof newPosition.dispositivos === "object" ? newPosition.dispositivos.id : Number(newPosition.dispositivos)]
+          : []
 
-        // Crear objeto con estructura completa incluyendo todos los campos requeridos
-        const dataToSend = {
-            nombre: newPosition.nombre || "",
-            tipo: newPosition.tipo || "",
-            estado: newPosition.estado || "disponible",
-            detalles: newPosition.detalles || "",
-            fila: fila,
-            columna: newPosition.columna,
-            color: newPosition.servicio ? getServiceColor(newPosition.servicio) : COLOR_DEFAULT,
-            colorFuente: newPosition.colorFuente || "#000000",
-            colorOriginal: newPosition.colorOriginal || "",
-            borde: Boolean(newPosition.borde),
-            bordeDoble: Boolean(newPosition.bordeDoble),
-            piso: newPosition.piso || "PISO1",
-            sede: newPosition.sede || null,
-            servicio: newPosition.servicio || null,
-            dispositivos: normalizedDispositivos,
-            bordeDetalle: {
-                top: Boolean(newPosition.bordeDetalle?.top),
-                right: Boolean(newPosition.bordeDetalle?.right),
-                bottom: Boolean(newPosition.bordeDetalle?.bottom),
-                left: Boolean(newPosition.bordeDetalle?.left),
-                topDouble: Boolean(newPosition.bordeDetalle?.topDouble),
-                rightDouble: Boolean(newPosition.bordeDetalle?.rightDouble),
-                bottomDouble: Boolean(newPosition.bordeDetalle?.bottomDouble),
-                leftDouble: Boolean(newPosition.bordeDetalle?.leftDouble),
-            },
-            mergedCells: Array.isArray(newPosition.mergedCells) && newPosition.mergedCells.length > 0
-                ? newPosition.mergedCells.map(cell => ({
-                    row: Number(cell.row),
-                    col: cell.col,
-                }))
-                : [{ row: fila, col: newPosition.columna }],
-        };
+      // Crear objeto con estructura completa incluyendo todos los campos requeridos
+      const dataToSend = {
+        nombre: newPosition.nombre || "",
+        tipo: newPosition.tipo || "",
+        estado: newPosition.estado || "disponible",
+        detalles: newPosition.detalles || "",
+        fila: fila,
+        columna: newPosition.columna,
+        color: newPosition.servicio ? getServiceColor(newPosition.servicio) : COLOR_DEFAULT,
+        colorFuente: newPosition.colorFuente || "#000000",
+        colorOriginal: newPosition.colorOriginal || "",
+        borde: Boolean(newPosition.borde),
+        bordeDoble: Boolean(newPosition.bordeDoble),
+        piso: newPosition.piso || "PISO1",
+        sede: newPosition.sede || null,
+        servicio: newPosition.servicio || null,
+        dispositivos: normalizedDispositivos,
+        bordeDetalle: {
+          top: Boolean(newPosition.bordeDetalle?.top),
+          right: Boolean(newPosition.bordeDetalle?.right),
+          bottom: Boolean(newPosition.bordeDetalle?.bottom),
+          left: Boolean(newPosition.bordeDetalle?.left),
+          topDouble: Boolean(newPosition.bordeDetalle?.topDouble),
+          rightDouble: Boolean(newPosition.bordeDetalle?.rightDouble),
+          bottomDouble: Boolean(newPosition.bordeDetalle?.bottomDouble),
+          leftDouble: Boolean(newPosition.bordeDetalle?.leftDouble),
+        },
+        mergedCells:
+          Array.isArray(newPosition.mergedCells) && newPosition.mergedCells.length > 0
+            ? newPosition.mergedCells.map((cell) => ({
+                row: Number(cell.row),
+                col: cell.col,
+              }))
+            : [{ row: fila, col: newPosition.columna }],
+      }
 
-        // Si es edición, agregar el ID
-        if (newPosition.id && !isNaN(newPosition.id)) {
-            dataToSend.id = newPosition.id;
-        }
+      // Si es edición, agregar el ID
+      if (newPosition.id && !isNaN(newPosition.id)) {
+        dataToSend.id = newPosition.id
+      }
 
-        console.log("Datos a enviar:", JSON.stringify(dataToSend, null, 2));
+      console.log("Datos a enviar:", JSON.stringify(dataToSend, null, 2))
 
-        const method = newPosition.id ? "put" : "post";
-        const url = newPosition.id 
-            ? `${API_URL}api/posiciones/${newPosition.id}/` 
-            : `${API_URL}api/posiciones/`;
+      const method = newPosition.id ? "put" : "post"
+      const url = newPosition.id ? `${API_URL}api/posiciones/${newPosition.id}/` : `${API_URL}api/posiciones/`
 
-        const response = await axios[method](url, dataToSend, {
-            headers: {
-                "Content-Type": "application/json",
-            },
-        });
+      const response = await axios[method](url, dataToSend, {
+        headers: {
+          "Content-Type": "application/json",
+        },
+      })
 
-        console.log("Respuesta del servidor:", response.data);
-        showNotification("Posición guardada correctamente");
+      console.log("Respuesta del servidor:", response.data)
+      showNotification("Posición guardada correctamente")
 
-        // Recargar las posiciones para asegurar que se muestren correctamente
-        await fetchPositions();
+      // Recargar las posiciones para asegurar que se muestren correctamente
+      await fetchPositions()
 
-        setIsModalOpen(false);
-        clearSelection();
+      setIsModalOpen(false)
+      clearSelection()
     } catch (error) {
-        console.error("Error al guardar posición:", error);
-        console.error("Detalles del error:", error.response?.data);
+      console.error("Error al guardar posición:", error)
+      console.error("Detalles del error:", error.response?.data)
 
-        let errorMessage = "Error al guardar la posición";
-        if (error.response?.data) {
-            // Intentar mostrar errores de validación del backend
-            if (typeof error.response.data === "object") {
-                const validationErrors = Object.entries(error.response.data)
-                    .map(([field, errors]) => `${field}: ${Array.isArray(errors) ? errors.join(", ") : errors}`)
-                    .join("\n");
-                errorMessage += `:\n${validationErrors}`;
-            } else {
-                errorMessage += `: ${error.response.data}`;
-            }
+      let errorMessage = "Error al guardar la posición"
+      if (error.response?.data) {
+        // Intentar mostrar errores de validación del backend
+        if (typeof error.response.data === "object") {
+          const validationErrors = Object.entries(error.response.data)
+            .map(([field, errors]) => `${field}: ${Array.isArray(errors) ? errors.join(", ") : errors}`)
+            .join("\n")
+          errorMessage += `:\n${validationErrors}`
+        } else {
+          errorMessage += `: ${error.response.data}`
         }
+      }
 
-        showNotification(errorMessage, "error");
+      showNotification(errorMessage, "error")
     }
-};
+  }
 
   const deletePosition = async (id) => {
     try {
@@ -1202,6 +1289,10 @@ function FloorPlan() {
         setPositions((prevPositions) => {
           const newPositions = { ...prevPositions }
           delete newPositions[id]
+
+          // Actualizar el mapa de dispositivos asignados
+          updateAssignedDevices(newPositions)
+
           return newPositions
         })
 
@@ -1253,12 +1344,12 @@ function FloorPlan() {
 
     const startRow = Math.min(selectionStart.row, selectionEnd.row)
     const endRow = Math.max(selectionStart.row, selectionEnd.row)
-    const startCol = Math.min(columns.indexOf(selectionStart.col), columns.indexOf(selectionEnd.col))
-    const endCol = Math.max(columns.indexOf(selectionStart.col), columns.indexOf(selectionEnd.col))
+    const startColIndex = Math.min(columns.indexOf(selectionStart.col), columns.indexOf(selectionEnd.col))
+    const endColIndex = Math.max(columns.indexOf(selectionStart.col), columns.indexOf(selectionEnd.col))
 
     const cells = []
     for (let r = startRow; r <= endRow; r++) {
-      for (let c = startCol; c <= endCol; c++) {
+      for (let c = startColIndex; c <= endColIndex; c++) {
         cells.push({ row: r, col: columns[c] })
       }
     }
@@ -1270,10 +1361,12 @@ function FloorPlan() {
 
     const startRow = Math.min(selectionStart.row, selectionEnd.row)
     const endRow = Math.max(selectionStart.row, selectionEnd.row)
-    const startCol = Math.min(columns.indexOf(selectionStart.col), columns.indexOf(selectionEnd.col))
-    const endCol = Math.max(columns.indexOf(selectionStart.col), columns.indexOf(selectionEnd.col))
+    const startColIndex = Math.min(columns.indexOf(selectionStart.col), columns.indexOf(selectionEnd.col))
+    const endColIndex = Math.max(columns.indexOf(selectionStart.col), columns.indexOf(selectionEnd.col))
 
-    return row >= startRow && row <= endRow && columns.indexOf(col) >= startCol && columns.indexOf(col) <= endCol
+    return (
+      row >= startRow && row <= endRow && columns.indexOf(col) >= startColIndex && columns.indexOf(col) <= endColIndex
+    )
   }
 
   const isCellInMergedArea = (row, col, position) => {
@@ -1315,7 +1408,7 @@ function FloorPlan() {
       piso: selectedPiso,
       sede: "",
       servicio: "",
-      dispositivos: defaultDeviceId ? [defaultDeviceId] : [],
+      dispositivos: [],
       mergedCells: selectedCells,
     })
     setIsModalOpen(true)
@@ -1365,10 +1458,55 @@ function FloorPlan() {
       piso: selectedPiso,
       sede: "",
       servicio: "",
-      dispositivos: defaultDeviceId ? [defaultDeviceId] : [],
+      dispositivos: [],
       mergedCells: [],
     })
     setIsModalOpen(true)
+  }
+
+  // Función para agregar un dispositivo a la posición actual
+  const addDeviceToPosition = (deviceId) => {
+    // Verificar si ya tenemos 5 dispositivos
+    if (newPosition.dispositivos.length >= 5) {
+      showNotification("No se pueden asignar más de 5 dispositivos a una posición", "error")
+      return
+    }
+
+    // Verificar si el dispositivo ya está asignado a otra posición
+    if (assignedDevices[deviceId] && assignedDevices[deviceId] !== newPosition.id) {
+      const positionWithDevice = Object.values(positions).find((p) => p.id === assignedDevices[deviceId])
+      showNotification(
+        `Este dispositivo ya está asignado a la posición ${positionWithDevice?.nombre || assignedDevices[deviceId]}`,
+        "error",
+      )
+      return
+    }
+
+    // Agregar el dispositivo si no está ya en la lista
+    if (!newPosition.dispositivos.includes(deviceId)) {
+      setNewPosition({
+        ...newPosition,
+        dispositivos: [...newPosition.dispositivos, deviceId],
+      })
+    }
+  }
+
+  // Función para quitar un dispositivo de la posición actual
+  const removeDeviceFromPosition = (deviceId) => {
+    setNewPosition({
+      ...newPosition,
+      dispositivos: newPosition.dispositivos.filter((d) => d !== deviceId),
+    })
+  }
+
+  // Función para filtrar dispositivos por término de búsqueda
+  const filterDevices = (devices, searchTerm) => {
+    if (!searchTerm) return devices
+
+    return devices.filter((device) => {
+      const deviceName = device.serial || device.nombre || device.modelo || `Dispositivo ${device.id}`
+      return deviceName.toLowerCase().includes(searchTerm.toLowerCase())
+    })
   }
 
   // Nueva función para obtener estadísticas por servicio
@@ -1494,9 +1632,6 @@ function FloorPlan() {
   )
 
   // Nueva función para renderizar el panel de estadísticas
-  // Modificar la función renderStatisticsPanel para incluir los estilos directamente en el componente
-  // en lugar de depender de un archivo CSS externo
-
   const renderStatisticsPanel = () => {
     const { serviceGroups, serviceAvailability } = getServiceStatistics()
     const chartData = prepareChartData()
@@ -1751,12 +1886,10 @@ function FloorPlan() {
 
         // Normalizar dispositivos
         dispositivos: Array.isArray(positionCopy.dispositivos)
-          ? positionCopy.dispositivos
+          ? positionCopy.dispositivos.map((d) => (typeof d === "object" ? d.id : Number(d)))
           : positionCopy.dispositivos
             ? [positionCopy.dispositivos]
-            : defaultDeviceId
-              ? [defaultDeviceId]
-              : [],
+            : [],
 
         // Normalizar servicio
         servicio:
@@ -1947,6 +2080,7 @@ function FloorPlan() {
               <th>Estado</th>
               <th>Servicio</th>
               <th>Sede</th>
+              <th>Dispositivos</th>
               <th>Acciones</th>
             </tr>
           </thead>
@@ -1984,6 +2118,11 @@ function FloorPlan() {
                     : getServiceName(position.servicio)}
                 </td>
                 <td>{typeof position.sede === "object" ? position.sede?.nombre : getSedeName(position.sede)}</td>
+                <td>
+                  {position.dispositivos && position.dispositivos.length > 0
+                    ? position.dispositivos.map((d) => getDeviceName(d)).join(", ")
+                    : "Sin dispositivos"}
+                </td>
                 <td>
                   <button
                     className="action-button"
@@ -2050,7 +2189,6 @@ function FloorPlan() {
           </div>
 
           {/* Modificar los botones de navegación para establecer directamente el modo deseado */}
-          {/* Buscar la sección de botones y reemplazarla por: */}
           <div className="action-buttonn" style={{ marginLeft: "10px" }}>
             <button
               className={`action-buttonn ${viewMode === "plano" ? "active" : ""}`}
@@ -2090,29 +2228,6 @@ function FloorPlan() {
         </div>
       </div>
 
-      {/* Modificar la lógica de renderizado para mostrar el contenido según viewMode */}
-      {/* Reemplazar: */}
-      {/* Panel de estadísticas */}
-      {/*{showStats && renderStatisticsPanel()}*/}
-
-      {/*{viewMode === "plano" && (*/}
-      {/*  <>*/}
-      {/*    <div className="zoom-controls">*/}
-      {/*      /!* ... *!/*/}
-      {/*    </div>*/}
-
-      {/*    <div*/}
-      {/*      className="table-container"*/}
-      {/*      /!* ... *!/*/}
-      {/*    >*/}
-      {/*      /!* ... *!/*/}
-      {/*    </div>*/}
-      {/*  </>*/}
-      {/*)}*/}
-
-      {/*{viewMode === "tabla" && renderAllPositionsTable()}*/}
-
-      {/* Por: */}
       {viewMode === "estadisticas" && renderStatisticsPanel()}
 
       {viewMode === "plano" && (
@@ -2191,10 +2306,10 @@ function FloorPlan() {
 
                         const startRow = Math.min(...rows)
                         const endRow = Math.max(...rows)
-                        const startCol = Math.min(...cols)
-                        const endCol = Math.max(...cols)
+                        const startColIndex = Math.min(...cols)
+                        const endColIndex = Math.max(...cols)
 
-                        const colSpan = endCol - startCol + 1
+                        const colSpan = endColIndex - startColIndex + 1
                         const rowSpan = endRow - startRow + 1
 
                         return renderTableCell(mergedAreaPosition, row, col, isSelected, true, colSpan, rowSpan)
@@ -2449,93 +2564,166 @@ function FloorPlan() {
                 </select>
               </div>
 
-              {/* En el modal */}
+              {/* Sección de dispositivos mejorada */}
               <div className="form-group full-width">
-  <label>Dispositivos:</label>
-  <div className="dual-list-container">
-    {/* Columna de dispositivos disponibles */}
-    <div className="list-column">
-      <div className="list-header">
-        <h4>Dispositivos Disponibles</h4>
-        <button 
-          type="button"
-          className="list-action-button"
-          onClick={() => {
-            const allDeviceIds = dispositivos.map(d => d.id);
-            setNewPosition({
-              ...newPosition,
-              dispositivos: [...new Set([...newPosition.dispositivos, ...allDeviceIds])]
-            });
-          }}
-        >
-          Seleccionar todos
-        </button>
-      </div>
-      <ul className="list-items">
-        {dispositivos
-          .filter(d => !newPosition.dispositivos.includes(d.id))
-          .map(dispositivo => (
-            <li key={dispositivo.id} className="list-item">
-              <span>{dispositivo.nombre || dispositivo.modelo || `Dispositivo ${dispositivo.id}`}</span>
-              <button
-                type="button"
-                className="add-button"
-                onClick={() => {
-                  setNewPosition({
-                    ...newPosition,
-                    dispositivos: [...newPosition.dispositivos, dispositivo.id]
-                  });
-                }}
-              >
-                +
-              </button>
-            </li>
-          ))}
-      </ul>
-    </div>
+                <label>Dispositivos: ({newPosition.dispositivos.length}/5)</label>
 
-    {/* Columna de dispositivos seleccionados */}
-    <div className="list-column">
-      <div className="list-header">
-        <h4>Dispositivos Seleccionados</h4>
-        <button 
-          type="button"
-          className="list-action-button"
-          onClick={() => {
-            setNewPosition({
-              ...newPosition,
-              dispositivos: []
-            });
-          }}
-        >
-          Eliminar todos
-        </button>
-      </div>
-      <ul className="list-items">
-        {newPosition.dispositivos.map(id => {
-          const dispositivo = dispositivos.find(d => d.id === id);
-          return (
-            <li key={id} className="list-item">
-              <span>{dispositivo ? (dispositivo.nombre || dispositivo.modelo) : `Dispositivo ${id}`}</span>
-              <button
-                type="button"
-                className="remove-button"
-                onClick={() => {
-                  setNewPosition({
-                    ...newPosition,
-                    dispositivos: newPosition.dispositivos.filter(d => d !== id)
-                  });
-                }}
-              >
-                ×
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-    </div>
-  </div>
-</div>
+                {/* Barra de búsqueda de dispositivos */}
+                <div style={{ marginBottom: "10px" }}>
+                  <div className="search-box" style={{ width: "100%" }}>
+                    <FaSearch className="search-icon" />
+                    <input
+                      type="text"
+                      placeholder="Buscar dispositivos..."
+                      value={deviceSearchTerm}
+                      onChange={(e) => setDeviceSearchTerm(e.target.value)}
+                      className="search-input"
+                    />
+                  </div>
+                </div>
+
+                {/* Contenedor de selección de dispositivos */}
+                <div style={{ display: "flex", gap: "10px", marginBottom: "15px" }}>
+                  {/* Columna de dispositivos disponibles */}
+                  <div style={{ flex: 1, border: "1px solid #444", borderRadius: "4px", overflow: "hidden" }}>
+                    <div style={{ background: "#333", padding: "8px", borderBottom: "1px solid #444" }}>
+                      <h4 style={{ margin: 0, fontSize: "14px", color: "#fff" }}>Dispositivos Disponibles</h4>
+                    </div>
+                    <div style={{ maxHeight: "200px", overflowY: "auto", background: "#222" }}>
+                      {filterDevices(getAvailableDevices(newPosition.id), deviceSearchTerm).length === 0 ? (
+                        <div style={{ padding: "10px", color: "#888", textAlign: "center" }}>
+                          {deviceSearchTerm
+                            ? "No se encontraron dispositivos con ese término"
+                            : "No hay dispositivos disponibles"}
+                        </div>
+                      ) : (
+                        <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+                          {filterDevices(getAvailableDevices(newPosition.id), deviceSearchTerm).map((dispositivo) => (
+                            <li
+                              key={dispositivo.id}
+                              style={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                alignItems: "center",
+                                padding: "8px 12px",
+                                borderBottom: "1px solid #333",
+                                background: newPosition.dispositivos.includes(dispositivo.id)
+                                  ? "rgba(76, 175, 80, 0.1)"
+                                  : "transparent",
+                              }}
+                            >
+                              <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis" }}>
+                                {dispositivo.serial ||
+                                  dispositivo.nombre ||
+                                  dispositivo.modelo ||
+                                  `Dispositivo ${dispositivo.id}`}
+                              </span>
+                              <button
+                                type="button"
+                                style={{
+                                  backgroundColor: newPosition.dispositivos.length >= 5 ? "#555" : "transparent",
+                                  border: "none",
+                                  width: "24px",
+                                  height: "24px",
+                                  borderRadius: "50%",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  cursor: newPosition.dispositivos.length >= 5 ? "not-allowed" : "pointer",
+                                  fontWeight: "bold",
+                                  fontSize: "16px",
+                                  color: newPosition.dispositivos.length >= 5 ? "#888" : "#4CAF50",
+                                }}
+                                onClick={() => addDeviceToPosition(dispositivo.id)}
+                                disabled={newPosition.dispositivos.length >= 5}
+                                title={
+                                  newPosition.dispositivos.length >= 5
+                                    ? "Máximo 5 dispositivos permitidos"
+                                    : "Agregar dispositivo"
+                                }
+                              >
+                                +
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Columna de dispositivos seleccionados */}
+                  <div style={{ flex: 1, border: "1px solid #444", borderRadius: "4px", overflow: "hidden" }}>
+                    <div
+                      style={{
+                        background: "#333",
+                        padding: "8px",
+                        borderBottom: "1px solid #444",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                      }}
+                    >
+                      <h4 style={{ margin: 0, fontSize: "14px", color: "#fff" }}>Dispositivos Seleccionados</h4>
+                      <span
+                        style={{
+                          fontSize: "12px",
+                          color: newPosition.dispositivos.length >= 5 ? "#ff4757" : "#fff",
+                          fontWeight: newPosition.dispositivos.length >= 5 ? "bold" : "normal",
+                        }}
+                      >
+                        {newPosition.dispositivos.length}/5
+                      </span>
+                    </div>
+                    <div style={{ maxHeight: "200px", overflowY: "auto", background: "#222" }}>
+                      {newPosition.dispositivos.length === 0 ? (
+                        <div style={{ padding: "10px", color: "#888", textAlign: "center" }}>
+                          No hay dispositivos seleccionados
+                        </div>
+                      ) : (
+                        <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+                          {newPosition.dispositivos.map((id) => (
+                            <li
+                              key={id}
+                              style={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                alignItems: "center",
+                                padding: "8px 12px",
+                                borderBottom: "1px solid #333",
+                              }}
+                            >
+                              <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis" }}>
+                                {getDeviceName(id)}
+                              </span>
+                              <button
+                                type="button"
+                                style={{
+                                  backgroundColor: "transparent",
+                                  border: "none",
+                                  width: "24px",
+                                  height: "24px",
+                                  borderRadius: "50%",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  cursor: "pointer",
+                                  fontWeight: "bold",
+                                  fontSize: "16px",
+                                  color: "#F44336",
+                                }}
+                                onClick={() => removeDeviceFromPosition(id)}
+                                title="Quitar dispositivo"
+                              >
+                                ×
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
 
               <div className="form-group full-width">
                 <label>Detalles:</label>
