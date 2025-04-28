@@ -28,6 +28,7 @@ const SidebarMenu = () => {
     { path: "/services", icon: <IoIosDesktop size={20} />, label: "Servicios" },
     { path: "/sedes", icon: <IoIosDesktop size={20} />, label: "Sedes" },
     { path: "/History", icon: <MdHistory size={20} />, label: "Historial" },
+    { path: "/Movimiento", icon: <MdHistory size={20} />, label: "Movimiento" },
     { path: "/settings", icon: <FaCogs size={20} />, label: "Config" },
   ]
 

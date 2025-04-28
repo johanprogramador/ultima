@@ -452,7 +452,7 @@ function FloorPlan() {
   // Estados para los selectores
   const [servicios, setServicios] = useState([])
   const [sedes, setSedes] = useState([])
-  const [dispositivos, setDispositivos] = useState([])
+  const [dispositivos, setDispositivos] = useState([]); // Inicializa como array vacío
 
   // Nuevo estado para el filtro de servicio en las estadísticas
   const [selectedService, setSelectedService] = useState("")
@@ -461,30 +461,41 @@ function FloorPlan() {
   //const [showStats, setShowStats] = useState(false)
 
   // Función para cargar los datos de los selectores
+  // En la función fetchSelectorData, verifica la respuesta de la API:
   const fetchSelectorData = async () => {
     try {
       const [serviciosResponse, sedesResponse, dispositivosResponse] = await Promise.all([
         axios.get(`${API_URL}api/servicios/`),
         axios.get(`${API_URL}api/sedes/`),
         axios.get(`${API_URL}api/dispositivos/`),
-      ])
-
-      setServicios(serviciosResponse.data)
-      setSedes(sedesResponse.data)
-
-      // Guardar los dispositivos y establecer el ID del dispositivo por defecto
-      const dispositivosData = dispositivosResponse.data
-      setDispositivos(dispositivosData)
-
-      // Establecer el ID del primer dispositivo como dispositivo por defecto
-      if (dispositivosData && dispositivosData.length > 0) {
-        setDefaultDeviceId(dispositivosData[0].id)
+      ]);
+  
+      setServicios(serviciosResponse.data || []);
+      setSedes(sedesResponse.data || []);
+      
+      // Asegurarse de que dispositivos es un array
+      let dispositivosData = [];
+      if (dispositivosResponse.data) {
+        if (Array.isArray(dispositivosResponse.data)) {
+          dispositivosData = dispositivosResponse.data;
+        } else if (dispositivosResponse.data.results && Array.isArray(dispositivosResponse.data.results)) {
+          // Manejar paginación si la API la usa
+          dispositivosData = dispositivosResponse.data.results;
+        }
+      }
+  
+      console.log("Dispositivos recibidos:", dispositivosData);
+      setDispositivos(dispositivosData);
+  
+      if (dispositivosData.length > 0) {
+        setDefaultDeviceId(dispositivosData[0].id);
       }
     } catch (error) {
-      console.error("Error al cargar datos para selectores:", error)
-      showNotification("Error al cargar datos para selectores", "error")
+      console.error("Error al cargar dispositivos:", error);
+      setDispositivos([]); // Asegurar que sea array incluso en error
+      showNotification("Error al cargar dispositivos", "error");
     }
-  }
+  };
 
   // Cargar datos iniciales
   useEffect(() => {
@@ -492,6 +503,8 @@ function FloorPlan() {
     fetchPositions()
   }, []) // Ya no depende de selectedPiso para cargar todas las posiciones
 
+
+  
   // Función para obtener el color del servicio por ID
   const getServiceColor = (serviceId) => {
     if (!serviceId) return COLOR_DEFAULT
@@ -1073,101 +1086,105 @@ function FloorPlan() {
   // Reemplazar la función savePosition with this versión mejorada
   const savePosition = async () => {
     try {
-      // Verificar si tenemos un dispositivo por defecto
-      if (newPosition.dispositivos.length === 0 && !defaultDeviceId && dispositivos.length === 0) {
-        showNotification("No hay dispositivos disponibles para asignar a la posición", "error")
-        return
-      }
-
-      // Convertir explícitamente los tipos de datos
-      const fila = Number.parseInt(newPosition.fila, 10)
-
-      // Crear objeto con estructura completa incluyendo todos los campos requeridos
-      const dataToSend = {
-        nombre: newPosition.nombre || "",
-        tipo: newPosition.tipo || "",
-        estado: newPosition.estado || "disponible",
-        detalles: newPosition.detalles || "",
-        fila: fila,
-        columna: newPosition.columna,
-        color: newPosition.servicio ? getServiceColor(newPosition.servicio) : COLOR_DEFAULT,
-        colorFuente: newPosition.colorFuente || "#000000",
-        colorOriginal: newPosition.colorOriginal || "",
-        borde: Boolean(newPosition.borde),
-        bordeDoble: Boolean(newPosition.bordeDoble),
-        piso: newPosition.piso || "PISO1",
-        sede: newPosition.sede || null,
-        servicio: newPosition.servicio || null,
-        // Asegurar que dispositivos sea un array de IDs, nunca vacío
-        dispositivos:
-          Array.isArray(newPosition.dispositivos) && newPosition.dispositivos.length > 0
-            ? newPosition.dispositivos.map((d) => (typeof d === "object" ? d.id : d))
-            : [defaultDeviceId], // Usar el ID del dispositivo por defecto
-        // Simplificar bordeDetalle
-        bordeDetalle: {
-          top: Boolean(newPosition.bordeDetalle?.top),
-          right: Boolean(newPosition.bordeDetalle?.right),
-          bottom: Boolean(newPosition.bordeDetalle?.bottom),
-          left: Boolean(newPosition.bordeDetalle?.left),
-          topDouble: Boolean(newPosition.bordeDetalle?.topDouble),
-          rightDouble: Boolean(newPosition.bordeDetalle?.rightDouble),
-          bottomDouble: Boolean(newPosition.bordeDetalle?.bottomDouble),
-          leftDouble: Boolean(newPosition.bordeDetalle?.leftDouble),
-        },
-        // Simplificar mergedCells
-        mergedCells:
-          Array.isArray(newPosition.mergedCells) && newPosition.mergedCells.length > 0
-            ? newPosition.mergedCells.map((cell) => ({
-                row: Number(cell.row),
-                col: cell.col,
-              }))
-            : [{ row: fila, col: newPosition.columna }],
-      }
-
-      // Si es edición, agregar el ID
-      if (newPosition.id && !isNaN(newPosition.id)) {
-        dataToSend.id = newPosition.id
-      }
-
-      console.log("Datos a enviar:", JSON.stringify(dataToSend, null, 2))
-
-      const method = newPosition.id ? "put" : "post"
-      const url = newPosition.id ? `${API_URL}api/posiciones/${newPosition.id}/` : `${API_URL}api/posiciones/`
-
-      const response = await axios[method](url, dataToSend, {
-        headers: {
-          "Content-Type": "application/json",
-        },
-      })
-
-      console.log("Respuesta del servidor:", response.data)
-      showNotification("Posición guardada correctamente")
-
-      // Recargar las posiciones para asegurar que se muestren correctamente
-      await fetchPositions()
-
-      setIsModalOpen(false)
-      clearSelection()
-    } catch (error) {
-      console.error("Error al guardar posición:", error)
-      console.error("Detalles del error:", error.response?.data)
-
-      let errorMessage = "Error al guardar la posición"
-      if (error.response?.data) {
-        // Intentar mostrar errores de validación del backend
-        if (typeof error.response.data === "object") {
-          const validationErrors = Object.entries(error.response.data)
-            .map(([field, errors]) => `${field}: ${Array.isArray(errors) ? errors.join(", ") : errors}`)
-            .join("\n")
-          errorMessage += `:\n${validationErrors}`
-        } else {
-          errorMessage += `: ${error.response.data}`
+        // Verificar si tenemos un dispositivo por defecto
+        if ((!newPosition.dispositivos || newPosition.dispositivos.length === 0) && !defaultDeviceId && dispositivos.length === 0) {
+            showNotification("No hay dispositivos disponibles para asignar a la posición", "error");
+            return;
         }
-      }
 
-      showNotification(errorMessage, "error")
+        // Convertir explícitamente los tipos de datos
+        const fila = Number.parseInt(newPosition.fila, 10);
+
+        // Normalizar los dispositivos - asegurarse de que es un array y contiene solo IDs
+        const normalizedDispositivos = Array.isArray(newPosition.dispositivos)
+            ? newPosition.dispositivos.map(d => typeof d === 'object' ? d.id : d)
+            : newPosition.dispositivos
+                ? [newPosition.dispositivos]
+                : defaultDeviceId
+                    ? [defaultDeviceId]
+                    : [];
+
+        // Crear objeto con estructura completa incluyendo todos los campos requeridos
+        const dataToSend = {
+            nombre: newPosition.nombre || "",
+            tipo: newPosition.tipo || "",
+            estado: newPosition.estado || "disponible",
+            detalles: newPosition.detalles || "",
+            fila: fila,
+            columna: newPosition.columna,
+            color: newPosition.servicio ? getServiceColor(newPosition.servicio) : COLOR_DEFAULT,
+            colorFuente: newPosition.colorFuente || "#000000",
+            colorOriginal: newPosition.colorOriginal || "",
+            borde: Boolean(newPosition.borde),
+            bordeDoble: Boolean(newPosition.bordeDoble),
+            piso: newPosition.piso || "PISO1",
+            sede: newPosition.sede || null,
+            servicio: newPosition.servicio || null,
+            dispositivos: normalizedDispositivos,
+            bordeDetalle: {
+                top: Boolean(newPosition.bordeDetalle?.top),
+                right: Boolean(newPosition.bordeDetalle?.right),
+                bottom: Boolean(newPosition.bordeDetalle?.bottom),
+                left: Boolean(newPosition.bordeDetalle?.left),
+                topDouble: Boolean(newPosition.bordeDetalle?.topDouble),
+                rightDouble: Boolean(newPosition.bordeDetalle?.rightDouble),
+                bottomDouble: Boolean(newPosition.bordeDetalle?.bottomDouble),
+                leftDouble: Boolean(newPosition.bordeDetalle?.leftDouble),
+            },
+            mergedCells: Array.isArray(newPosition.mergedCells) && newPosition.mergedCells.length > 0
+                ? newPosition.mergedCells.map(cell => ({
+                    row: Number(cell.row),
+                    col: cell.col,
+                }))
+                : [{ row: fila, col: newPosition.columna }],
+        };
+
+        // Si es edición, agregar el ID
+        if (newPosition.id && !isNaN(newPosition.id)) {
+            dataToSend.id = newPosition.id;
+        }
+
+        console.log("Datos a enviar:", JSON.stringify(dataToSend, null, 2));
+
+        const method = newPosition.id ? "put" : "post";
+        const url = newPosition.id 
+            ? `${API_URL}api/posiciones/${newPosition.id}/` 
+            : `${API_URL}api/posiciones/`;
+
+        const response = await axios[method](url, dataToSend, {
+            headers: {
+                "Content-Type": "application/json",
+            },
+        });
+
+        console.log("Respuesta del servidor:", response.data);
+        showNotification("Posición guardada correctamente");
+
+        // Recargar las posiciones para asegurar que se muestren correctamente
+        await fetchPositions();
+
+        setIsModalOpen(false);
+        clearSelection();
+    } catch (error) {
+        console.error("Error al guardar posición:", error);
+        console.error("Detalles del error:", error.response?.data);
+
+        let errorMessage = "Error al guardar la posición";
+        if (error.response?.data) {
+            // Intentar mostrar errores de validación del backend
+            if (typeof error.response.data === "object") {
+                const validationErrors = Object.entries(error.response.data)
+                    .map(([field, errors]) => `${field}: ${Array.isArray(errors) ? errors.join(", ") : errors}`)
+                    .join("\n");
+                errorMessage += `:\n${validationErrors}`;
+            } else {
+                errorMessage += `: ${error.response.data}`;
+            }
+        }
+
+        showNotification(errorMessage, "error");
     }
-  }
+};
 
   const deletePosition = async (id) => {
     try {
@@ -2432,55 +2449,93 @@ function FloorPlan() {
                 </select>
               </div>
 
+              {/* En el modal */}
               <div className="form-group full-width">
-                <label>Dispositivo:</label>
-                <select
-                  value={newPosition.dispositivos?.[0] || ""}
-                  onChange={(e) => {
-                    const value = e.target.value
-                    setNewPosition({
-                      ...newPosition,
-                      dispositivos: value === "" ? [] : [value],
-                    })
-                  }}
-                >
-                  <option value="">Seleccione un dispositivo</option>
-                  {dispositivos.map((dispositivo) => (
-                    <option key={dispositivo.id} value={dispositivo.id}>
-                      {dispositivo.nombre || dispositivo.serial}
-                    </option>
-                  ))}
-                </select>
-                <div className="selected-devices">
-                  {Array.isArray(newPosition.dispositivos) && newPosition.dispositivos.length > 0 && (
-                    <div className="selected-items">
-                      <p className="pp">Dispositivos seleccionados:</p>
-                      <ul>
-                        {newPosition.dispositivos.map((id) => {
-                          const device = dispositivos.find((d) => d.id.toString() === id.toString())
-                          return (
-                            <li key={id}>
-                              {device ? device.nombre || device.serial : id}
-                              <button
-                                type="button"
-                                className="remove-item"
-                                onClick={() => {
-                                  setNewPosition({
-                                    ...newPosition,
-                                    dispositivos: newPosition.dispositivos.filter((d) => d !== id),
-                                  })
-                                }}
-                              >
-                                ×
-                              </button>
-                            </li>
-                          )
-                        })}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-              </div>
+  <label>Dispositivos:</label>
+  <div className="dual-list-container">
+    {/* Columna de dispositivos disponibles */}
+    <div className="list-column">
+      <div className="list-header">
+        <h4>Dispositivos Disponibles</h4>
+        <button 
+          type="button"
+          className="list-action-button"
+          onClick={() => {
+            const allDeviceIds = dispositivos.map(d => d.id);
+            setNewPosition({
+              ...newPosition,
+              dispositivos: [...new Set([...newPosition.dispositivos, ...allDeviceIds])]
+            });
+          }}
+        >
+          Seleccionar todos
+        </button>
+      </div>
+      <ul className="list-items">
+        {dispositivos
+          .filter(d => !newPosition.dispositivos.includes(d.id))
+          .map(dispositivo => (
+            <li key={dispositivo.id} className="list-item">
+              <span>{dispositivo.nombre || dispositivo.modelo || `Dispositivo ${dispositivo.id}`}</span>
+              <button
+                type="button"
+                className="add-button"
+                onClick={() => {
+                  setNewPosition({
+                    ...newPosition,
+                    dispositivos: [...newPosition.dispositivos, dispositivo.id]
+                  });
+                }}
+              >
+                +
+              </button>
+            </li>
+          ))}
+      </ul>
+    </div>
+
+    {/* Columna de dispositivos seleccionados */}
+    <div className="list-column">
+      <div className="list-header">
+        <h4>Dispositivos Seleccionados</h4>
+        <button 
+          type="button"
+          className="list-action-button"
+          onClick={() => {
+            setNewPosition({
+              ...newPosition,
+              dispositivos: []
+            });
+          }}
+        >
+          Eliminar todos
+        </button>
+      </div>
+      <ul className="list-items">
+        {newPosition.dispositivos.map(id => {
+          const dispositivo = dispositivos.find(d => d.id === id);
+          return (
+            <li key={id} className="list-item">
+              <span>{dispositivo ? (dispositivo.nombre || dispositivo.modelo) : `Dispositivo ${id}`}</span>
+              <button
+                type="button"
+                className="remove-button"
+                onClick={() => {
+                  setNewPosition({
+                    ...newPosition,
+                    dispositivos: newPosition.dispositivos.filter(d => d !== id)
+                  });
+                }}
+              >
+                ×
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  </div>
+</div>
 
               <div className="form-group full-width">
                 <label>Detalles:</label>

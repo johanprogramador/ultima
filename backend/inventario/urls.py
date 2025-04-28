@@ -18,7 +18,7 @@ from django.contrib import admin  # type: ignore
 from django.urls import path, include  # type: ignore
 from dispositivos import views
 from rest_framework.routers import DefaultRouter # type: ignore
-from dispositivos.views import RolUserViewSet, HistorialViewSet
+from dispositivos.views import RolUserViewSet, HistorialViewSet, MovimientoViewSet
 from dispositivos.views import dashboard_data
 from dispositivos.views import validate_token , obtener_datos_protegidos , importar_dispositivos, keepalive, refresh_token_view
 from dispositivos.views import subir_excel, descargar_excel
@@ -28,6 +28,7 @@ from dispositivos.views import subir_excel, descargar_excel
 router = DefaultRouter()
 router.register(r'usuarios', RolUserViewSet)
 router.register(r'historial', HistorialViewSet, basename='historial')
+router.register(r'movimientos', MovimientoViewSet, basename='movimiento')
 
 # Definición de las rutas URL
 urlpatterns = [

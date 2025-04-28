@@ -44,6 +44,7 @@ class ServiciosAdmin(admin.ModelAdmin):
 
 
 # Admin para Dispositivo
+# Admin para Dispositivo
 @admin.register(Dispositivo)
 class DispositivoAdmin(admin.ModelAdmin):
     list_display = ('tipo', 'marca', 'modelo', 'serial', 'razon_social', 'sede', 'estado', 'ubicacion')
@@ -51,14 +52,26 @@ class DispositivoAdmin(admin.ModelAdmin):
     list_filter = ('tipo', 'estado', 'sede', 'razon_social', 'ubicacion')
     list_editable = ('estado',)
     ordering = ('modelo',)
+    
+    def save_model(self, request, obj, form, change):
+        # Guardar primero el objeto para obtener un ID
+        super().save_model(request, obj, form, change)
+        # Luego guardar las relaciones many-to-many (como posiciones)
+        form.save_m2m()
+        
+    def save_related(self, request, form, formsets, change):
+        # Manejar el guardado de relaciones después del objeto principal
+        super().save_related(request, form, formsets, change)
+        # Aquí puedes añadir lógica adicional si es necesario
 
 # Admin para Movimiento
 @admin.register(Movimiento)
 class MovimientoAdmin(admin.ModelAdmin):
-    list_display = ('dispositivo', 'encargado', 'fecha_movimiento', 'ubicacion_origen', 'ubicacion_destino')
-    search_fields = ('dispositivo__serial', 'encargado__username', 'ubicacion_origen', 'ubicacion_destino')
-    list_filter = ('fecha_movimiento', 'ubicacion_origen', 'ubicacion_destino')
+    list_display = ('dispositivo', 'encargado', 'fecha_movimiento', 'posicion_origen', 'posicion_destino', 'sede')
+    list_filter = ('fecha_movimiento', 'posicion_origen', 'posicion_destino', 'sede')
+    search_fields = ('dispositivo__serial', 'dispositivo__modelo', 'encargado__username')
     date_hierarchy = 'fecha_movimiento'
+    ordering = ('-fecha_movimiento',)
 
 # Admin para Historial
 @admin.register(Historial)
@@ -73,8 +86,15 @@ class HistorialAdmin(admin.ModelAdmin):
     
     
     # Admin para Posicion
+# Admin para Posicion
 @admin.register(Posicion)
 class PosicionAdmin(admin.ModelAdmin):
     list_display = ('nombre', 'piso')
     search_fields = ('nombre',)
     list_filter = ('piso',)
+    
+    def save_model(self, request, obj, form, change):
+        # Guardar primero el objeto para obtener un ID
+        super().save_model(request, obj, form, change)
+        # Luego guardar las relaciones many-to-many (como dispositivos)
+        form.save_m2m()

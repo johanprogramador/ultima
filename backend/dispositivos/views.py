@@ -33,7 +33,7 @@ from rest_framework_simplejwt.exceptions import TokenError # type: ignore
 from .models import RolUser, Sede, Dispositivo, Servicios, Posicion, Historial, Movimiento
 from .serializers import (
     RolUserSerializer, ServiciosSerializer, LoginSerializer,
-    DispositivoSerializer, SedeSerializer, PosicionSerializer, HistorialSerializer
+    DispositivoSerializer, SedeSerializer, PosicionSerializer, HistorialSerializer,  MovimientoSerializer
 )
 from .pagination import StandardPagination
 from .utils import importar_excel, exportar_excel
@@ -50,7 +50,7 @@ def dashboard(request):
 @authentication_classes([TokenAuthentication])
 @permission_classes([IsAuthenticated])
 def dashboard(request):
-    return Response({"message": "Bienvenido al dashboard"})
+    return Response({"message": "Bienvenido al dashboard"}) 
 
 @api_view(['GET' ])
 @permission_classes([IsAuthenticated])  # Solo los usuarios autenticados pueden acceder
@@ -1151,3 +1151,88 @@ def dispositivo_choices(request):
         'CAPACIDADES_MEMORIA_RAM': Dispositivo.CAPACIDADES_MEMORIA_RAM,
         'ESTADO_USO': Dispositivo.ESTADO_USO,
     })
+    
+    
+    
+    
+# vistas para los movimientos
+class MovimientoViewSet(viewsets.ReadOnlyModelViewSet):
+    permission_classes = [AllowAny]
+    queryset = Movimiento.objects.all().select_related('dispositivo', 'encargado')
+    serializer_class = MovimientoSerializer
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['ubicacion_origen', 'ubicacion_destino']
+    search_fields = [
+        'dispositivo__serial', 
+        'dispositivo__modelo',
+        'dispositivo__marca',
+        'dispositivo__placa_cu',
+        'encargado__nombre',
+        'encargado__username',
+        'encargado__email',
+        'observacion'
+    ]
+    ordering_fields = ['fecha_movimiento']
+    ordering = ['-fecha_movimiento']  # Orden por defecto
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        
+        # Filtros adicionales
+        fecha_inicio = self.request.query_params.get('fecha_inicio')
+        fecha_fin = self.request.query_params.get('fecha_fin')
+        dispositivo_id = self.request.query_params.get('dispositivo_id')
+        
+        try:
+            if fecha_inicio:
+                fecha_inicio_dt = datetime.strptime(fecha_inicio, '%Y-%m-%d')
+                queryset = queryset.filter(fecha_movimiento__gte=fecha_inicio_dt)
+                
+            if fecha_fin:
+                fecha_fin_dt = datetime.strptime(fecha_fin, '%Y-%m-%d') + timedelta(days=1)
+                queryset = queryset.filter(fecha_movimiento__lte=fecha_fin_dt)
+        except ValueError as e:
+            pass
+            
+        if dispositivo_id:
+            if dispositivo_id.isdigit():
+                queryset = queryset.filter(dispositivo__id=dispositivo_id)
+            else:
+                queryset = queryset.filter(
+                    Q(dispositivo__serial__icontains=dispositivo_id) |
+                    Q(dispositivo__placa_cu__icontains=dispositivo_id) |
+                    Q(dispositivo__modelo__icontains=dispositivo_id) |
+                    Q(dispositivo__marca__icontains=dispositivo_id)
+                )
+                
+        return queryset
+
+    @action(detail=False, methods=['get'])
+    def opciones_filtro(self, request):
+        dispositivos = Dispositivo.objects.all().order_by('-id')[:100]
+        usuarios = RolUser.objects.filter(is_active=True).order_by('-id')[:50]
+        
+        return Response({
+            'ubicaciones': dict(Movimiento.UBICACIONES),
+            'dispositivos': [
+                {
+                    'id': d.id,
+                    'marca': d.marca,
+                    'modelo': d.modelo,
+                    'serial': d.serial,
+                    'placa_cu': d.placa_cu
+                } 
+                for d in dispositivos
+            ],
+            'usuarios': [
+                {
+                    'id': u.id,
+                    'nombre': u.get_full_name() or u.username,
+                    'email': u.email,
+                    'rol': u.rol
+                }
+                for u in usuarios
+            ],
+            'ordering_fields': self.ordering_fields,
+            'search_fields': self.search_fields
+        })

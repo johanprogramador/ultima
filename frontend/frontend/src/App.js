@@ -25,6 +25,7 @@ import Dashboard from "./pages/Dashboard";
 import Inventory from "./pages/Inventory";
 import Settings from "./pages/Settings";
 import Records from "./pages/Records";
+import Movimiento from "./pages/Movimientos";
 import History from "./pages/History";
 import Services from "./pages/services";
 import Sedes from "./pages/sedes";
@@ -93,6 +94,7 @@ function App() {
             <Route path="/sedes" element={<Sedes />} />
             <Route path="/records" element={<Records />} />
             <Route path="/history" element={<History />} />
+            <Route path="/movimiento" element={<Movimiento />} />
             <Route path="/devices" element={<Devices />} />
             <Route path="/planos" element={<Plans />} />
           </Route>

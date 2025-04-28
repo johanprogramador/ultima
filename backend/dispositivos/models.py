@@ -9,11 +9,13 @@ import re
 from colorfield.fields import ColorField  # type: ignore
 from django.utils.translation import gettext_lazy as _
 from django.contrib.postgres.fields import JSONField
-from django.db.models.signals import post_save, pre_save,  post_delete
+from django.db.models.signals import post_save, pre_save, post_delete
 from django.db import transaction
 from django.contrib.auth.signals import user_logged_in
 from django.utils.timezone import now, timedelta
 from django.utils import timezone
+import logging
+from django.contrib.auth import get_user
 
 class Sede(models.Model):
     nombre = models.CharField(max_length=100, unique=True)
@@ -89,7 +91,7 @@ class RolUser(AbstractUser):
             })
 
     def save(self, *args, **kwargs):
-        # Ejecuta las validaciones antes de guardar (opcional, puedes comentarlo si da problemas)
+        # Ejecuta las validaciones antes de guardar
         self.full_clean()
         super().save(*args, **kwargs)
 
@@ -101,7 +103,6 @@ class RolUser(AbstractUser):
         verbose_name_plural = "Usuarios"
         ordering = ['id']
 
-        
 class Servicios(models.Model):
     nombre = models.CharField(max_length=100)
     codigo_analitico = models.CharField(max_length=255, null=True, blank=True)  
@@ -123,6 +124,8 @@ class Posicion(models.Model):
         ('inactivo', 'Inactivo'),
     ]
 
+    MAX_DISPOSITIVOS = 5  # Límite máximo de dispositivos por posición
+
     nombre = models.CharField(max_length=100, blank=True, null=True)
     tipo = models.CharField(max_length=50, blank=True, null=True)
     estado = models.CharField(max_length=50, choices=ESTADOS, default='disponible')
@@ -138,8 +141,8 @@ class Posicion(models.Model):
     piso = models.CharField(max_length=50)
     sede = models.ForeignKey(Sede, on_delete=models.CASCADE, related_name="posiciones", null=True, blank=True)
     servicio = models.ForeignKey(Servicios, on_delete=models.SET_NULL, related_name="posiciones", null=True, blank=True)
-    dispositivos = models.ManyToManyField('Dispositivo', related_name='posiciones')
-    mergedCells = models.JSONField(default=list)  # Corregido: JSONField en lugar de lista
+    dispositivos = models.ManyToManyField('Dispositivo', related_name='posiciones', blank=True)
+    mergedCells = models.JSONField(default=list)
 
     def __str__(self):
         return f"{self.nombre} - Piso {self.piso}"
@@ -149,12 +152,23 @@ class Posicion(models.Model):
             raise ValidationError("La fila debe ser un número positivo.")
         if not self.columna.isalpha():
             raise ValidationError("La columna debe contener solo letras.")
+        
+        # Validar que no se exceda el límite de dispositivos
+        if self.pk and self.dispositivos.count() > self.MAX_DISPOSITIVOS:
+            raise ValidationError(f"Una posición no puede tener más de {self.MAX_DISPOSITIVOS} dispositivos.")
 
     def save(self, *args, **kwargs):
-        self.clean()
+        # Asegurarse que dispositivos sea una lista válida
+        if not hasattr(self, 'dispositivos'):
+            self.dispositivos = []
         super().save(*args, **kwargs)
 
+    def cantidad_dispositivos(self):
+        return self.dispositivos.count()
 
+    class Meta:
+        verbose_name = "Posición"
+        verbose_name_plural = "Posiciones"
 
 class Dispositivo(models.Model):
     TIPOS_DISPOSITIVOS = [
@@ -166,8 +180,7 @@ class Dispositivo(models.Model):
         ('HP_PRODISPLAY_P201', 'HP ProDisplay P201'),
         ('PORTATIL', 'Portátil'),
         ('TODO_EN_UNO', 'Todo en uno'),
-]
-
+    ]
 
     FABRICANTES = [
         ('DELL', 'Dell'),
@@ -189,8 +202,7 @@ class Dispositivo(models.Model):
         ('REPARAR_BAJA', 'Reparar/Baja'),
         ('SEDE', 'Sede'),
         ('STOCK', 'Stock'),
-]
-
+    ]
 
     RAZONES_SOCIALES = [
         ('ECCC', 'ECCC'),
@@ -199,8 +211,7 @@ class Dispositivo(models.Model):
         ('BODEGA_CN', 'Bodega CN'),
         ('COMPRADO', 'Comprado'),
         ('PROPIO', 'Propio'),
-]
-
+    ]
 
     CAPACIDADES_DISCO_DURO = [
         ('120GB', '120 GB'),
@@ -212,7 +223,6 @@ class Dispositivo(models.Model):
         ('8TB', '8 TB'),
     ]
 
-
     CAPACIDADES_MEMORIA_RAM = [
         ('2GB', '2 GB'),
         ('4GB', '4 GB'),
@@ -223,22 +233,20 @@ class Dispositivo(models.Model):
     ]
     
     SISTEMAS_OPERATIVOS = [
-    ('NA', 'No Aplica'),
-    ('SERVER', 'Server'),
-    ('WIN10', 'Windows 10'),
-    ('WIN11', 'Windows 11'),
-    ('WIN7', 'Windows 7'),
-    ('VACIO', 'Sin Sistema Operativo'),
-    ('MACOS', 'MacOS'),  # Agregado MacOS como opción válida
+        ('NA', 'No Aplica'),
+        ('SERVER', 'Server'),
+        ('WIN10', 'Windows 10'),
+        ('WIN11', 'Windows 11'),
+        ('WIN7', 'Windows 7'),
+        ('VACIO', 'Sin Sistema Operativo'),
+        ('MACOS', 'MacOS'),
     ]
-
 
     PROCESADORES = [
         ('AMD_A12', 'AMD A12'),
         ('AMD_A8_5500B', 'AMD A8-5500B APU'),
         ('AMD_RYZEN', 'AMD RYZEN'),
         ('AMD_RYZEN_3_2200GE', 'AMD Ryzen 3 2200GE'),
-
         ('I3_6200U', 'Intel Core i3 6200U'),
         ('I5_4430S', 'Intel Core i5 4430s'),
         ('I5_4460', 'Intel Core i5 4460'),
@@ -259,9 +267,7 @@ class Dispositivo(models.Model):
         ('I7_13TH', 'Intel Core i7 13th Gen'),
         ('I7_7TH', 'Intel Core i7 7th Gen'),
         ('I7_8565U', 'Intel Core i7 8565U @ 1.80GHz'),
-
     ]
-
 
     UBICACIONES = [
         ('CASA', 'Casa'),
@@ -278,32 +284,28 @@ class Dispositivo(models.Model):
     ]
     
     ESTADO_USO = [
-    ('DISPONIBLE', 'Disponible'),
-    ('EN_USO', 'En uso'),
-    ('INHABILITADO', 'Inhabilitado'),
-]
+        ('DISPONIBLE', 'Disponible'),
+        ('EN_USO', 'En uso'),
+        ('INHABILITADO', 'Inhabilitado'),
+    ]
 
     tipo = models.CharField(max_length=20, choices=TIPOS_DISPOSITIVOS)
     estado = models.CharField(max_length=18, choices=ESTADO_DISPOSITIVO, null=True, blank=True)
     marca = models.CharField(max_length=20, choices=FABRICANTES, db_index=True)
-    
-    # Razon Social como un atributo de tipo CharField
     regimen = models.CharField(max_length=100, null=True, blank=True)
     razon_social = models.CharField(max_length=100, choices=RAZONES_SOCIALES, null=True, blank=True)
     modelo = models.CharField(max_length=50, db_index=True)
     serial = models.CharField(max_length=50, unique=True, db_index=True)
     placa_cu = models.CharField(max_length=50, unique=True, null=True, blank=True)
-
-    piso = models.CharField(max_length=10, null=True, blank=True)  # Se extrae de la posición
+    piso = models.CharField(max_length=10, null=True, blank=True)
     estado_propiedad = models.CharField(max_length=10, choices=ESTADOS_PROPIEDAD, null=True, blank=True)
-    # Clave foránea a Posicion con related_name para evitar conflicto
     posicion = models.ForeignKey(Posicion, on_delete=models.SET_NULL, null=True, blank=True, related_name='dispositivos_relacionados')
     sede = models.ForeignKey('Sede', on_delete=models.SET_NULL, null=True, blank=True, related_name="dispositivos", db_index=True)
     capacidad_disco_duro = models.CharField(max_length=10, choices=CAPACIDADES_DISCO_DURO, null=True, blank=True)
     capacidad_memoria_ram = models.CharField(max_length=10, choices=CAPACIDADES_MEMORIA_RAM, null=True, blank=True)
     ubicacion = models.CharField(max_length=10, choices=UBICACIONES, null=True, blank=True)
-    proveedor = models.CharField(max_length=100, null=True, blank=True)  # Nombre del proveedor
-    sistema_operativo = models.CharField(max_length=20, choices=SISTEMAS_OPERATIVOS, null=True, blank=True)  # Sistema operativo instalado
+    proveedor = models.CharField(max_length=100, null=True, blank=True)
+    sistema_operativo = models.CharField(max_length=20, choices=SISTEMAS_OPERATIVOS, null=True, blank=True)
     procesador = models.CharField(max_length=100, choices=PROCESADORES, null=True, blank=True)
     estado_uso = models.CharField(max_length=100, choices=ESTADO_USO, null=True, blank=True)
     observaciones = models.TextField(max_length=500, null=True, blank=True, verbose_name="Observaciones adicionales")
@@ -311,16 +313,43 @@ class Dispositivo(models.Model):
     def __str__(self):
         return f"{self.tipo} {self.marca} {self.modelo} - {self.serial}"
 
+    def clean(self):
+        # Validación para asegurar que la sede del dispositivo coincida con la sede de la posición
+        if self.posicion and self.sede and self.posicion.sede != self.sede:
+            raise ValidationError(
+                f"La posición seleccionada pertenece a la sede {self.posicion.sede.nombre}, "
+                f"pero el dispositivo está asignado a la sede {self.sede.nombre}. "
+                "Deben coincidir."
+            )
+        
+        # Validación para asegurar que la posición no tenga demasiados dispositivos
+        if self.posicion and self.posicion.dispositivos.count() >= Posicion.MAX_DISPOSITIVOS:
+            raise ValidationError(
+                f"Esta posición ya tiene el máximo de {Posicion.MAX_DISPOSITIVOS} dispositivos asignados."
+            )
+
+    def save(self, *args, **kwargs):
+        # Si se asigna una posición, asegurarse de que la sede coincida
+        if self.posicion and not self.sede:
+            self.sede = self.posicion.sede
+        elif self.posicion and self.sede and self.posicion.sede != self.sede:
+            # Esto debería ser manejado por clean(), pero por si acaso
+            raise ValidationError("La sede del dispositivo no coincide con la sede de la posición")
+        
+        self.clean()
+        super().save(*args, **kwargs)
+
     def is_operativo(self):
         return self.estado_uso == 'EN_USO' and self.estado == 'BUENO'
 
+    class Meta:
+        verbose_name = "Dispositivo"
+        verbose_name_plural = "Dispositivos"
 
-"""historico"""
 class Historial(models.Model):
     class TipoCambio(models.TextChoices):  
         CREACION = 'CREACION', _('Creación de dispositivo')
         MODIFICACION = 'MODIFICACION', _('Modificación de datos')
-        ASIGNACION = 'ASIGNACION', _('Cambio de usuario asignado')
         MOVIMIENTO = 'MOVIMIENTO', _('Movimiento registrado')
         LOGIN = 'LOGIN', _('Inicio de sesión')
         OTRO = 'OTRO', _('Otro')
@@ -340,34 +369,46 @@ class Historial(models.Model):
 
     class Meta:
         ordering = ['-fecha_modificacion']
+        verbose_name = "Historial"
+        verbose_name_plural = "Historiales"
 
-
-# MODELO DE MOVIMIENTO
 class Movimiento(models.Model):
-    UBICACIONES = [
-        ('CASA', 'Casa'),
-        ('CLIENTE', 'Cliente'),
-        ('SEDE', 'Sede'),
-        ('OTRO', 'Otro'),
-    ]
-
     dispositivo = models.ForeignKey('Dispositivo', on_delete=models.CASCADE, related_name="movimientos")
     encargado = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="movimientos")
     fecha_movimiento = models.DateTimeField(auto_now_add=True)
-    ubicacion_origen = models.CharField(max_length=50, choices=UBICACIONES)
-    ubicacion_destino = models.CharField(max_length=50, choices=UBICACIONES)
+    posicion_origen = models.ForeignKey('Posicion', on_delete=models.SET_NULL, 
+                                     null=True, blank=True, 
+                                     related_name='movimientos_origen')
+    posicion_destino = models.ForeignKey('Posicion', on_delete=models.SET_NULL, 
+                                      null=True, blank=True, 
+                                      related_name='movimientos_destino')
     observacion = models.TextField(null=True, blank=True)
+    sede = models.ForeignKey(Sede, on_delete=models.SET_NULL, null=True, blank=True, related_name="movimientos")
+
+    def clean(self):
+        # Validación existente
+        if self.posicion_origen == self.posicion_destino:
+            raise ValidationError("La posición de origen y destino no pueden ser iguales.")
+        
+        # Validar límite de dispositivos en posición destino
+        if self.posicion_destino and self.posicion_destino.dispositivos_relacionados.count() >= Posicion.MAX_DISPOSITIVOS:
+            raise ValidationError(f"La posición destino ya tiene el máximo de {Posicion.MAX_DISPOSITIVOS} dispositivos.")
 
     def save(self, *args, **kwargs):
-        if self.ubicacion_origen == self.ubicacion_destino:
-            raise ValidationError("La ubicación de origen y destino no pueden ser iguales.")
-
+        self.clean()
+        
         if not self.observacion:
+            origen = self.posicion_origen.nombre if self.posicion_origen else "Sin posición"
+            destino = self.posicion_destino.nombre if self.posicion_destino else "Sin posición"
+            
             self.observacion = (
                 f"Dispositivo {self.dispositivo.serial} ({self.dispositivo.marca} {self.dispositivo.modelo}) "
-                f"movido de {self.get_ubicacion_origen_display()} a {self.get_ubicacion_destino_display()} "
+                f"movido de {origen} a {destino} "
                 f"por {self.encargado.get_full_name() if self.encargado else 'Desconocido'}."
             )
+        
+        if not self.sede and self.dispositivo and self.dispositivo.sede:
+            self.sede = self.dispositivo.sede
 
         super().save(*args, **kwargs)
 
@@ -377,33 +418,10 @@ class Movimiento(models.Model):
     class Meta:
         verbose_name = "Movimiento"
         verbose_name_plural = "Movimientos"
+        ordering = ['-fecha_movimiento']
 
+# Signals
 
-@receiver(post_save, sender=Movimiento)
-def handle_movimiento_post_save(sender, instance, created, **kwargs):
-    if created:
-        dispositivo = instance.dispositivo
-        usuario = instance.encargado
-        sede = dispositivo.posicion.sede.nombre if dispositivo.posicion and dispositivo.posicion.sede else None
-
-        cambios = (
-            f"El dispositivo {dispositivo.serial} ({dispositivo.marca} {dispositivo.modelo}) "
-            f"fue movido de {instance.ubicacion_origen} a {instance.ubicacion_destino} "
-            f"por {usuario.get_full_name() if usuario else 'Desconocido'}."
-        )
-
-        transaction.on_commit(lambda: Historial.objects.create(
-            dispositivo=dispositivo,
-            usuario=usuario,
-            cambios={"detalle": cambios},
-            tipo_cambio=Historial.TipoCambio.MOVIMIENTO,
-            modelo_afectado="Movimiento",
-            instancia_id=instance.id,
-            sede_nombre=sede
-        ))
-
-
-# GUARDAR ESTADO ANTERIOR
 @receiver(pre_save, sender=Dispositivo)
 def guardar_estado_anterior(sender, instance, **kwargs):
     if instance.pk:
@@ -412,10 +430,20 @@ def guardar_estado_anterior(sender, instance, **kwargs):
         except Dispositivo.DoesNotExist:
             instance._estado_anterior = None
 
-
-# REGISTRAR CAMBIOS (CREACIÓN Y MODIFICACIONES)
 @receiver(post_save, sender=Dispositivo)
 def registrar_cambios_historial(sender, instance, created, **kwargs):
+    from django.contrib.auth import get_user
+    from django.core.exceptions import ObjectDoesNotExist
+    
+    try:
+        request = kwargs.get('request', None)
+        if request:
+            usuario_actual = request.user
+        else:
+            usuario_actual = None
+    except ObjectDoesNotExist:
+        usuario_actual = None
+
     cambios = {}
     estado_anterior = getattr(instance, '_estado_anterior', None)
     sede = instance.posicion.sede.nombre if instance.posicion and instance.posicion.sede else None
@@ -428,7 +456,7 @@ def registrar_cambios_historial(sender, instance, created, **kwargs):
 
         Historial.objects.create(
             dispositivo=instance,
-            usuario=instance.usuario_asignado,
+            usuario=usuario_actual,
             cambios=cambios,
             tipo_cambio=Historial.TipoCambio.CREACION,
             modelo_afectado="Dispositivo",
@@ -450,7 +478,7 @@ def registrar_cambios_historial(sender, instance, created, **kwargs):
     if cambios:
         Historial.objects.create(
             dispositivo=instance,
-            usuario=instance.usuario_asignado,
+            usuario=usuario_actual,
             cambios=cambios,
             tipo_cambio=Historial.TipoCambio.MODIFICACION,
             modelo_afectado="Dispositivo",
@@ -458,35 +486,87 @@ def registrar_cambios_historial(sender, instance, created, **kwargs):
             sede_nombre=sede
         )
 
-
-# REGISTRAR MOVIMIENTO AUTOMÁTICO SI CAMBIA POSICIÓN
+# En models.py
 @receiver(post_save, sender=Dispositivo)
-def registrar_movimiento(sender, instance, **kwargs):
-    dispositivo_anterior = sender.objects.filter(pk=instance.pk).first()
-    posicion_anterior = dispositivo_anterior.posicion if dispositivo_anterior else None
-
-    if posicion_anterior == instance.posicion:
+def registrar_movimiento_automatico(sender, instance, created, **kwargs):
+    if created:  # No hacer nada si es creación (las M2M se manejan después)
         return
 
-    ubicacion_origen = posicion_anterior.nombre if posicion_anterior else "Desconocido"
-    ubicacion_destino = instance.posicion.nombre if instance.posicion else "Desconocido"
+    try:
+        dispositivo_anterior = Dispositivo.objects.get(pk=instance.pk)
+        posicion_anterior = dispositivo_anterior.posicion
+        posicion_nueva = instance.posicion
 
-    encargado = instance.usuario_asignado
-    if not encargado and instance.posicion and instance.posicion.sede:
-        encargado = instance.posicion.sede.usuarios_asignados.first()
-    if not encargado:
-        encargado = RolUser.objects.filter(rol='admin').first()
+        if posicion_anterior != posicion_nueva:
+            # Obtener el usuario que realizó el cambio
+            request = kwargs.get('request', None)
+            user = request.user if request else None
+            
+            # Validar límite de dispositivos en la nueva posición
+            if posicion_nueva and posicion_nueva.dispositivos.count() >= Posicion.MAX_DISPOSITIVOS:
+                raise ValidationError(
+                    f"La posición destino ya tiene el máximo de {Posicion.MAX_DISPOSITIVOS} dispositivos."
+                )
+            
+            # Quitar de la posición anterior (si existe)
+            if posicion_anterior:
+                posicion_anterior.dispositivos.remove(instance)
+            
+            # Agregar a la nueva posición (si existe)
+            if posicion_nueva:
+                posicion_nueva.dispositivos.add(instance)
+            
+            # Crear registro de movimiento con observación detallada
+            observacion = (
+                f"Cambio de posición desde {'ninguna' if not posicion_anterior else posicion_anterior.nombre} "
+                f"({'ninguna' if not posicion_anterior else posicion_anterior.sede.nombre}) "
+                f"a {'ninguna' if not posicion_nueva else posicion_nueva.nombre} "
+                f"({'ninguna' if not posicion_nueva else posicion_nueva.sede.nombre})"
+            )
+            
+            Movimiento.objects.create(
+                dispositivo=instance,
+                posicion_origen=posicion_anterior,
+                posicion_destino=posicion_nueva,
+                encargado=user,
+                sede=instance.sede,
+                observacion=observacion
+            )
+    except Dispositivo.DoesNotExist:
+        pass
+    except Exception as e:
+        # Revertir cambios si hay error
+        if posicion_anterior:
+            instance.posicion = posicion_anterior
+            instance.save()
+        raise e
 
-    if instance.posicion:
-        Movimiento.objects.create(
-            dispositivo=instance,
-            ubicacion_origen=ubicacion_origen,
-            ubicacion_destino=ubicacion_destino,
-            encargado=encargado,
+@receiver(post_save, sender=Movimiento)
+def handle_movimiento_post_save(sender, instance, created, **kwargs):
+    if created:
+        dispositivo = instance.dispositivo
+        usuario = instance.encargado
+        sede = instance.sede.nombre if instance.sede else None
+
+        origen = instance.posicion_origen.nombre if instance.posicion_origen else "Sin posición"
+        destino = instance.posicion_destino.nombre if instance.posicion_destino else "Sin posición"
+        
+        cambios = (
+            f"El dispositivo {dispositivo.serial} ({dispositivo.marca} {dispositivo.modelo}) "
+            f"fue movido de {origen} a {destino} "
+            f"por {usuario.get_full_name() if usuario else 'Desconocido'}."
         )
 
+        transaction.on_commit(lambda: Historial.objects.create(
+            dispositivo=dispositivo,
+            usuario=usuario,
+            cambios={"detalle": cambios},
+            tipo_cambio=Historial.TipoCambio.MOVIMIENTO,
+            modelo_afectado="Movimiento",
+            instancia_id=instance.id,
+            sede_nombre=sede
+        ))
 
-# REGISTRAR INICIO DE SESIÓN
 @receiver(user_logged_in)
 def registrar_login(sender, request, user, **kwargs):
     sede = getattr(user, 'sede', None)
@@ -497,7 +577,7 @@ def registrar_login(sender, request, user, **kwargs):
         tipo_cambio=Historial.TipoCambio.LOGIN,
         fecha_modificacion__gte=hace_un_minuto
     ).exists():
-        return  # Ya se registró un login recientemente
+        return
 
     Historial.objects.create(
         usuario=user,
@@ -507,12 +587,12 @@ def registrar_login(sender, request, user, **kwargs):
         instancia_id=user.id,
         sede_nombre=str(sede) if sede else None
     )
-# REGISTRAR ELIMINACIÓN
+
 @receiver(post_delete)
 def registrar_eliminacion(sender, instance, **kwargs):
     if sender.__name__ in ['Dispositivo', 'Movimiento', 'RolUser', 'Usuario']:
         sede = None
-        usuario = getattr(instance, 'usuario_asignado', None) or getattr(instance, 'usuario', None)
+        usuario = getattr(instance, 'usuario', None)
 
         if hasattr(instance, 'posicion') and instance.posicion and instance.posicion.sede:
             sede = instance.posicion.sede.nombre

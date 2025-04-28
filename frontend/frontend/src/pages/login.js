@@ -18,7 +18,6 @@ const Login = () => {
     const [sedeId, setSedeId] = useState('');
     const [sedes, setSedes] = useState([]);
     const [loading, setLoading] = useState(false);
-    const [rememberMe, setRememberMe] = useState(false);
     const [errors, setErrors] = useState({});
     const [failedAttempts, setFailedAttempts] = useState(0);
     const [sedesError, setSedesError] = useState(null);
@@ -82,7 +81,7 @@ const Login = () => {
             };
     
             // 💡 Login con datos extendidos
-            await login(data.access, userData, rememberMe);
+            await login(data.access, userData);
     
             // Resetear intentos fallidos
             sessionStorage.removeItem('failedAttempts');
@@ -105,8 +104,8 @@ const Login = () => {
                     errorMessage = 'No tiene permisos para esta sede';
                 } else if (error.response.data) {
                     errorMessage = error.response.data.detail || 
-                                   error.response.data.message || 
-                                   'Error en el servidor';
+                                error.response.data.message || 
+                                'Error en el servidor';
                 }
             }
             
@@ -165,17 +164,6 @@ const Login = () => {
                         {errors.sedeId && <span className="error-message">{errors.sedeId}</span>}
                         
                         {sedesError && <span className="error-message">{sedesError}</span>}
-                        
-                        <div className="remember-me">
-                            <input
-                                type="checkbox"
-                                id="rememberMe"
-                                checked={rememberMe}
-                                onChange={(e) => setRememberMe(e.target.checked)}
-                                disabled={loading}
-                            />
-                            <label htmlFor="rememberMe">Recordar sesión</label>
-                        </div>
                         
                         <button 
                             type="submit" 
