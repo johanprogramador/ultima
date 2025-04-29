@@ -20,7 +20,13 @@ const ServiciosExistentes = () => {
   const [alert, setAlert] = useState({
     show: false,
     message: "",
-    type: "error", // Puede ser "error" o "success"
+    type: "error",
+  })
+  const [confirmAlert, setConfirmAlert] = useState({
+    show: false,
+    message: "",
+    onConfirm: null,
+    onCancel: null,
   })
 
   // Estados para búsqueda y paginación
@@ -49,7 +55,6 @@ const ServiciosExistentes = () => {
     try {
       const response = await axios.get("http://127.0.0.1:8000/api/sede/")
       if (Array.isArray(response.data.sedes)) {
-        // Cambiar a 'response.data.sedes' si la respuesta está anidada
         setSedes(response.data.sedes)
       } else {
         console.error("La respuesta de sedes no tiene el formato esperado")
@@ -87,7 +92,7 @@ const ServiciosExistentes = () => {
       setSelectedService({
         ...serviceData,
         sede: serviceData.sedes.length > 0 ? serviceData.sedes[0].id : "",
-        color: serviceData.color || "#FFFFFF", // Asegurar que siempre hay un color
+        color: serviceData.color || "#FFFFFF",
       })
 
       setShowDetailModal(true)
@@ -113,7 +118,6 @@ const ServiciosExistentes = () => {
         return
       }
 
-      // Convertimos sede a lista y aseguramos que el color esté presente
       const payload = {
         nombre: updatedServiceData.nombre,
         codigo_analitico: updatedServiceData.codigo_analitico,
@@ -125,9 +129,8 @@ const ServiciosExistentes = () => {
 
       await axios.put(`http://127.0.0.1:8000/api/servicios/${serviceId}/`, payload)
 
-      // 🔹 Esperamos 200ms antes de refrescar la lista
       setTimeout(() => {
-        fetchServices() // 🔹 Refrescamos la lista de servicios
+        fetchServices()
         setShowDetailModal(false)
       }, 200)
 
@@ -166,6 +169,32 @@ const ServiciosExistentes = () => {
     }
   }
 
+  // Confirm delete
+  const confirmDelete = (serviceId) => {
+    setConfirmAlert({
+      show: true,
+      message: "¿Estás seguro de que deseas eliminar este servicio?",
+      onConfirm: () => {
+        deleteService(serviceId)
+        setConfirmAlert({ ...confirmAlert, show: false })
+      },
+      onCancel: () => setConfirmAlert({ ...confirmAlert, show: false }),
+    })
+  }
+
+  // Confirm save changes
+  const confirmSaveChanges = (serviceId, updatedServiceData) => {
+    setConfirmAlert({
+      show: true,
+      message: "¿Deseas guardar los cambios realizados?",
+      onConfirm: () => {
+        editService(serviceId, updatedServiceData)
+        setConfirmAlert({ ...confirmAlert, show: false })
+      },
+      onCancel: () => setConfirmAlert({ ...confirmAlert, show: false }),
+    })
+  }
+
   const addService = async () => {
     if (!newService.nombre) {
       setAlert({
@@ -180,11 +209,11 @@ const ServiciosExistentes = () => {
       const payload = {
         nombre: newService.nombre,
         codigo_analitico: newService.codigo_analitico,
-        sedes: newService.sede ? [Number.parseInt(newService.sede, 10)] : [], // 🔹 Convertimos el ID de la sede a número
+        sedes: newService.sede ? [Number.parseInt(newService.sede, 10)] : [],
         color: newService.color || "#FFFFFF",
       }
 
-      console.log("Enviando datos al backend:", payload) // Para depuración
+      console.log("Enviando datos al backend:", payload)
 
       await axios.post("http://127.0.0.1:8000/api/servicios/", payload)
       setShowForm(false)
@@ -227,7 +256,7 @@ const ServiciosExistentes = () => {
   // Efecto para aplicar filtros cuando cambia el término de búsqueda
   useEffect(() => {
     applyFilters()
-    setCurrentPage(1) // Resetear a la primera página cuando cambia la búsqueda
+    setCurrentPage(1)
   }, [searchTerm])
 
   // Efecto para cerrar la alerta automáticamente después de 1 segundo
@@ -235,8 +264,8 @@ const ServiciosExistentes = () => {
     if (alert.show) {
       const timer = setTimeout(() => {
         setAlert({ ...alert, show: false })
-      }, 1000) // Cerrar la alerta después de 1 segundo
-      return () => clearTimeout(timer) // Limpiar el timer si el componente se desmonta
+      }, 1000)
+      return () => clearTimeout(timer)
     }
   }, [alert])
 
@@ -264,6 +293,27 @@ const ServiciosExistentes = () => {
     )
   }
 
+  // Componente de alerta de confirmación
+  const ConfirmAlert = ({ message, onConfirm, onCancel }) => {
+    return (
+      <div className="alert-overlay">
+        <div className="modal-container confirm-container">
+        <div className="confirm-modal">
+        <p>{message}</p>
+          <div className="confirm-buttons">
+            <button className="confirm-button cancel" onClick={onCancel}>
+              Cancelar
+            </button>
+            <button className="alert-button accept" onClick={onConfirm}>
+              Confirmar
+            </button>
+          </div>
+        </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="records-container">
       <div className="user-card">
@@ -277,6 +327,15 @@ const ServiciosExistentes = () => {
         {/* Mensajes de alerta */}
         {alert.show && (
           <AlertModal message={alert.message} type={alert.type} onClose={() => setAlert({ ...alert, show: false })} />
+        )}
+
+        {/* Alerta de confirmación */}
+        {confirmAlert.show && (
+          <ConfirmAlert
+            message={confirmAlert.message}
+            onConfirm={confirmAlert.onConfirm}
+            onCancel={confirmAlert.onCancel}
+          />
         )}
 
         {/* Buscador */}
@@ -309,7 +368,7 @@ const ServiciosExistentes = () => {
                     {service.sedes && service.sedes.length > 0
                       ? service.sedes
                           .map((sede) => sede.nombre)
-                          .join(", ") // 👈 Mostrar el nombre de la sede
+                          .join(", ")
                       : "No asignadas"}
                   </div>
                 </div>
@@ -317,7 +376,7 @@ const ServiciosExistentes = () => {
                   <button className="action-button-modern edit" onClick={() => fetchServiceDetails(service.id)}>
                     <FaEdit />
                   </button>
-                  <button className="action-button-modern delete" onClick={() => deleteService(service.id)}>
+                  <button className="action-button-modern delete" onClick={() => confirmDelete(service.id)}>
                     <FaTrash />
                   </button>
                 </div>
@@ -406,7 +465,10 @@ const ServiciosExistentes = () => {
                     ))}
                   </select>
                 </div>
-                <button className="create-button" onClick={() => editService(selectedService.id, selectedService)}>
+                <button
+                  className="create-button"
+                  onClick={() => confirmSaveChanges(selectedService.id, selectedService)}
+                >
                   Guardar cambios
                 </button>
               </div>
@@ -476,4 +538,3 @@ const ServiciosExistentes = () => {
 }
 
 export default ServiciosExistentes
-

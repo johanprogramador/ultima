@@ -495,3 +495,83 @@
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 
+/* Alertas de confirmación */
+.alert-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 2000; /* Mayor que los modales normales */
+}
+
+.alert-confirm {
+  background-color: white;
+  padding: 2rem;
+  border-radius: 8px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  max-width: 400px;
+  width: 90%;
+  text-align: center;
+  z-index: 2001;
+  animation: fadeIn 0.3s ease-out;
+  
+}
+
+.alert-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.alert-button {
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.alert-button.cancel {
+  background-color: #f0f0f0;
+  color: #333;
+}
+
+.alert-button.cancel:hover {
+  background-color: #e0e0e0;
+}
+
+.alert-button.accept {
+  background-color: #785bc7;
+  color: white;
+}
+
+.alert-button.accept:hover {
+  background-color: #7058b1;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Asegurar que los modales normales tengan un z-index menor */
+.modal-overlay {
+  z-index: 1000;
+}
+
+.modal-container {
+  z-index: 1001;
+}

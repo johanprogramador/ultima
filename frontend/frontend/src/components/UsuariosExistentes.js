@@ -32,22 +32,23 @@ const UsuariosExistentes = () => {
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage] = useState(6)
   const [totalPages, setTotalPages] = useState(1)
+  const [passwordError, setPasswordError] = useState("")
+  const [documentoError, setDocumentoError] = useState("")
+  const [celularError, setCelularError] = useState("")
+  const [showConfirmModal, setShowConfirmModal] = useState(false)
+  const [confirmAction, setConfirmAction] = useState({ callback: null, message: "" })
 
   const fetchSedes = useCallback(async () => {
     try {
       const response = await axios.get("http://127.0.0.1:8000/api/sedes/");
       
-      // Manejar diferentes formatos de respuesta
       let sedesData = [];
       
       if (Array.isArray(response.data)) {
-        // Si la respuesta es directamente un array
         sedesData = response.data;
       } else if (response.data.sedes) {
-        // Si la respuesta tiene propiedad 'sedes'
         sedesData = response.data.sedes;
       } else if (response.data.results) {
-        // Si usa paginación (propiedad 'results')
         sedesData = response.data.results;
       }
       
@@ -165,14 +166,76 @@ const UsuariosExistentes = () => {
     }
   }
 
+  const confirmActionHandler = async () => {
+    setShowConfirmModal(false)
+    if (confirmAction.callback) {
+      await confirmAction.callback()
+    }
+  }
+
+  const handleToggleUserStatus = (userId, isActive) => {
+    setConfirmAction({
+      callback: () => toggleUserStatus(userId, isActive),
+      message: `¿Estás seguro que deseas ${isActive ? "desactivar" : "activar"} este usuario?`
+    })
+    setShowConfirmModal(true)
+  }
+
+  const handleEditUser = (userId, updatedUserData) => {
+    setConfirmAction({
+      callback: () => editUser(userId, updatedUserData),
+      message: "¿Estás seguro que deseas guardar los cambios realizados?"
+    })
+    setShowConfirmModal(true)
+  }
+
+  const validatePassword = (password) => {
+    if (password.length < 8) {
+      setPasswordError("La contraseña debe tener al menos 8 caracteres")
+      return false
+    }
+    setPasswordError("")
+    return true
+  }
+
+  const validateDocumento = (documento) => {
+    if (documento && (documento.length < 8 || documento.length > 12)) {
+      setDocumentoError("El documento debe tener entre 8 y 12 caracteres")
+      return false
+    }
+    setDocumentoError("")
+    return true
+  }
+
+  const validateCelular = (celular) => {
+    if (celular && (celular.length < 10 || celular.length > 12)) {
+      setCelularError("El celular debe tener entre 10 y 12 caracteres")
+      return false
+    }
+    setCelularError("")
+    return true
+  }
+
   const addUser = async () => {
     if (!newUser.nombre || !newUser.email || !newUser.password || !newUser.username) {
       showAlert("Por favor, complete todos los campos obligatorios")
       return
     }
 
+    if (!validatePassword(newUser.password)) {
+      return
+    }
+
     if (newUser.password !== newUser.confirm_password) {
       showAlert("Las contraseñas no coinciden")
+      return
+    }
+
+    if (!validateDocumento(newUser.documento)) {
+      return
+    }
+
+    if (!validateCelular(newUser.celular)) {
       return
     }
 
@@ -265,6 +328,26 @@ const UsuariosExistentes = () => {
     )
   }
 
+  const ConfirmModal = ({ message, onConfirm, onCancel }) => {
+    return (
+      <div className="modal-overlay">
+        <div className="modal-container confirm-container">
+          <div className="confirm-modal">
+            <p>{message}</p>
+            <div className="confirm-buttons">
+              <button className="confirm-button cancel" onClick={onCancel}>
+                Cancelar
+              </button>
+              <button className="confirm-button accept" onClick={onConfirm}>
+                Aceptar
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="records-container">
       <div className="user-card">
@@ -314,7 +397,7 @@ const UsuariosExistentes = () => {
                     <input
                       type="checkbox"
                       checked={user.is_active}
-                      onChange={() => toggleUserStatus(user.id, user.is_active)}
+                      onChange={() => handleToggleUserStatus(user.id, user.is_active)}
                     />
                     <span className="slider round"></span>
                   </label>
@@ -355,7 +438,10 @@ const UsuariosExistentes = () => {
                 <FaTimes />
               </button>
               
-              <div className="modal-content">
+              <form className="modal-content" onSubmit={(e) => {
+                e.preventDefault();
+                showForm ? addUser() : handleEditUser(selectedUser.id, selectedUser);
+              }}>
                 <h1 className="modal-title">{showForm ? "Agregar Usuario" : "Editar Usuario"}</h1>
                 
                 <div className="input-group">
@@ -367,6 +453,7 @@ const UsuariosExistentes = () => {
                       ? setNewUser({...newUser, nombre: e.target.value}) 
                       : setSelectedUser({...selectedUser, nombre: e.target.value})
                     }
+                    required
                   />
                 </div>
                 
@@ -379,6 +466,7 @@ const UsuariosExistentes = () => {
                       ? setNewUser({...newUser, username: e.target.value}) 
                       : setSelectedUser({...selectedUser, username: e.target.value})
                     }
+                    required
                   />
                 </div>
                 
@@ -391,7 +479,44 @@ const UsuariosExistentes = () => {
                       ? setNewUser({...newUser, email: e.target.value}) 
                       : setSelectedUser({...selectedUser, email: e.target.value})
                     }
+                    required
                   />
+                </div>
+                
+                <div className="input-group">
+                  <label>Documento</label>
+                  <input
+                    type="text"
+                    value={showForm ? newUser.documento : selectedUser?.documento || ""}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      showForm 
+                        ? setNewUser({...newUser, documento: value}) 
+                        : setSelectedUser({...selectedUser, documento: value});
+                      validateDocumento(value);
+                    }}
+                    minLength="8"
+                    maxLength="12"
+                  />
+                  {documentoError && <span className="error-message">{documentoError}</span>}
+                </div>
+
+                <div className="input-group">
+                  <label>Celular</label>
+                  <input
+                    type="tel"
+                    value={showForm ? newUser.celular : selectedUser?.celular || ""}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      showForm 
+                        ? setNewUser({...newUser, celular: value}) 
+                        : setSelectedUser({...selectedUser, celular: value});
+                      validateCelular(value);
+                    }}
+                    minLength="10"
+                    maxLength="12"
+                  />
+                  {celularError && <span className="error-message">{celularError}</span>}
                 </div>
                 
                 {showForm && (
@@ -401,8 +526,14 @@ const UsuariosExistentes = () => {
                       <input
                         type="password"
                         value={newUser.password}
-                        onChange={(e) => setNewUser({...newUser, password: e.target.value})}
+                        onChange={(e) => {
+                          setNewUser({...newUser, password: e.target.value})
+                          validatePassword(e.target.value)
+                        }}
+                        required
+                        minLength="8"
                       />
+                      {passwordError && <span className="error-message">{passwordError}</span>}
                     </div>
                     
                     <div className="input-group">
@@ -411,6 +542,8 @@ const UsuariosExistentes = () => {
                         type="password"
                         value={newUser.confirm_password}
                         onChange={(e) => setNewUser({...newUser, confirm_password: e.target.value})}
+                        required
+                        minLength="8"
                       />
                     </div>
                   </>
@@ -441,6 +574,7 @@ const UsuariosExistentes = () => {
                           <button 
                             className="select-all-btn"
                             onClick={selectAllSedes}
+                            type="button"
                           >
                             Seleccionar todos
                           </button>
@@ -472,6 +606,7 @@ const UsuariosExistentes = () => {
                         <button 
                           className="remove-all-btn"
                           onClick={removeAllSedes}
+                          type="button"
                         >
                           Eliminar todos
                         </button>
@@ -494,12 +629,16 @@ const UsuariosExistentes = () => {
                 </div>
                 
                 <button 
-                  className="create-button" 
-                  onClick={showForm ? addUser : () => editUser(selectedUser.id, selectedUser)}
+                  type="submit"
+                  className="create-button"
+                  disabled={
+                    (showForm && (passwordError || documentoError || celularError)) || 
+                    (!showForm && (documentoError || celularError))
+                  }
                 >
                   {showForm ? "Agregar Usuario" : "Guardar Cambios"}
                 </button>
-              </div>
+              </form>
             </div>
           </div>
         )}
@@ -509,6 +648,14 @@ const UsuariosExistentes = () => {
             message={alert.message} 
             type={alert.type} 
             onClose={() => setAlert({ ...alert, show: false })} 
+          />
+        )}
+
+        {showConfirmModal && (
+          <ConfirmModal 
+            message={confirmAction.message}
+            onConfirm={confirmActionHandler}
+            onCancel={() => setShowConfirmModal(false)}
           />
         )}
       </div>

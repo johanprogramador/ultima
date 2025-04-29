@@ -320,6 +320,7 @@ def register_user_view(request):
         return Response({"error": "Ocurrió un error al registrar el usuario."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['GET' , 'POST'])
+@permission_classes([AllowAny]) 
 def reset_password_request(request):
 
     email = request.data.get('email', '').strip().lower()
@@ -347,6 +348,7 @@ def reset_password_request(request):
         return Response({"error": "Ocurrió un error al procesar tu solicitud. Por favor, inténtalo de nuevo más tarde."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['GET' , 'POST'])
+@permission_classes([AllowAny]) 
 def reset_password(request):
 
     email = request.data.get('email', '').strip().lower()
