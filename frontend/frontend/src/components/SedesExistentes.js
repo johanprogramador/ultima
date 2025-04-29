@@ -28,6 +28,14 @@ const SedesExistentes = () => {
     type: "error",
   })
 
+  // Estado para alertas de confirmación
+  const [confirmAlert, setConfirmAlert] = useState({
+    show: false,
+    message: "",
+    onConfirm: null,
+    onCancel: null,
+  })
+
   // Estados para búsqueda y paginación
   const [searchTerm, setSearchTerm] = useState("")
   const [currentPage, setCurrentPage] = useState(1)
@@ -191,8 +199,6 @@ const SedesExistentes = () => {
 
   // Delete sede
   const deleteSede = async (sedeId) => {
-    if (!window.confirm("¿Estás seguro de que deseas eliminar esta sede?")) return
-    
     setIsLoading(true)
     try {
       await axios.delete(`${API_URL}${sedeId}/`)
@@ -233,6 +239,32 @@ const SedesExistentes = () => {
     }
   }
 
+  // Confirmar eliminación
+  const confirmDelete = (sedeId) => {
+    setConfirmAlert({
+      show: true,
+      message: "¿Estás seguro de que deseas eliminar esta sede?",
+      onConfirm: () => {
+        deleteSede(sedeId)
+        setConfirmAlert({ ...confirmAlert, show: false })
+      },
+      onCancel: () => setConfirmAlert({ ...confirmAlert, show: false }),
+    })
+  }
+
+  // Confirmar guardar cambios
+  const confirmSaveChanges = (sedeId, updatedSedeData) => {
+    setConfirmAlert({
+      show: true,
+      message: "¿Deseas guardar los cambios realizados?",
+      onConfirm: () => {
+        editSede(sedeId, updatedSedeData)
+        setConfirmAlert({ ...confirmAlert, show: false })
+      },
+      onCancel: () => setConfirmAlert({ ...confirmAlert, show: false }),
+    })
+  }
+
   // Load sedes when component mounts
   useEffect(() => {
     fetchSedes()
@@ -257,6 +289,27 @@ const SedesExistentes = () => {
             <button className="close-button" onClick={onClose}>
               &times;
             </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Componente de alerta de confirmación
+  const ConfirmAlert = ({ message, onConfirm, onCancel }) => {
+    return (
+      <div className="alert-overlay">
+        <div className="modal-container confirm-container">
+          <div className="confirm-modal">
+            <p>{message}</p>
+            <div className="confirm-buttons">
+              <button className="confirm-button cancel" onClick={onCancel}>
+                Cancelar
+              </button>
+              <button className="alert-button accept" onClick={onConfirm}>
+                Confirmar
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -294,7 +347,16 @@ const SedesExistentes = () => {
           />
         )}
 
-        {/* Buscador - Versión corregida */}
+        {/* Alerta de confirmación */}
+        {confirmAlert.show && (
+          <ConfirmAlert
+            message={confirmAlert.message}
+            onConfirm={confirmAlert.onConfirm}
+            onCancel={confirmAlert.onCancel}
+          />
+        )}
+
+        {/* Buscador */}
         <div className="search-container">
           <div className="search-input-container">
             <FaSearch className="search-icon" />
@@ -343,7 +405,7 @@ const SedesExistentes = () => {
                   </button>
                   <button 
                     className="action-button-modern delete" 
-                    onClick={() => !isLoading && deleteSede(sede.id)}
+                    onClick={() => !isLoading && confirmDelete(sede.id)}
                     disabled={isLoading}
                   >
                     <FaTrash />
@@ -433,7 +495,7 @@ const SedesExistentes = () => {
                 </div>
                 <button 
                   className="create-button" 
-                  onClick={() => editSede(selectedSede.id, selectedSede)}
+                  onClick={() => confirmSaveChanges(selectedSede.id, selectedSede)}
                   disabled={isLoading}
                 >
                   {isLoading ? "Guardando..." : "Guardar cambios"}

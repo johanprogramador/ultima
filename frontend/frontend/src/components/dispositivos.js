@@ -35,6 +35,14 @@ const Dispositivos = () => {
     type: "error",
   })
 
+  // Estado para alertas de confirmación
+  const [confirmAlert, setConfirmAlert] = useState({
+    show: false,
+    message: "",
+    onConfirm: null,
+    onCancel: null,
+  })
+
   // Estados para búsqueda y paginación
   const [searchTerm, setSearchTerm] = useState("")
   const [currentPage, setCurrentPage] = useState(1)
@@ -236,6 +244,7 @@ const Dispositivos = () => {
       })
     }
   }
+
   // Actualizar un dispositivo
   const updateDevice = async () => {
     if (!validateDevice(selectedDevice)) return
@@ -262,8 +271,6 @@ const Dispositivos = () => {
         delete cleanDeviceData.usuario_asignado
       } else {
         cleanDeviceData.usuario_asignado = Number.parseInt(cleanDeviceData.usuario_asignado)
-        // O eliminar completamente si no es soportado
-        // delete cleanDeviceData.usuario_asignado
       }
   
       await axios.put(`http://127.0.0.1:8000/api/dispositivos/${selectedDevice.id}/`, cleanDeviceData)
@@ -284,11 +291,8 @@ const Dispositivos = () => {
     }
   }
 
+  // Eliminar un dispositivo
   const deleteDevice = async (deviceId) => {
-    if (!window.confirm("¿Está seguro que desea eliminar este dispositivo?")) {
-      return
-    }
-  
     try {
       const response = await axios.delete(`http://127.0.0.1:8000/api/dispositivos/${deviceId}/`)
       
@@ -314,6 +318,32 @@ const Dispositivos = () => {
         type: "error",
       })
     }
+  }
+
+  // Confirmar eliminación
+  const confirmDelete = (deviceId) => {
+    setConfirmAlert({
+      show: true,
+      message: "¿Estás seguro de que deseas eliminar este dispositivo?",
+      onConfirm: () => {
+        deleteDevice(deviceId)
+        setConfirmAlert({ ...confirmAlert, show: false })
+      },
+      onCancel: () => setConfirmAlert({ ...confirmAlert, show: false }),
+    })
+  }
+
+  // Confirmar guardar cambios
+  const confirmSaveChanges = (deviceId, updatedDeviceData) => {
+    setConfirmAlert({
+      show: true,
+      message: "¿Deseas guardar los cambios realizados?",
+      onConfirm: () => {
+        updateDevice(deviceId, updatedDeviceData)
+        setConfirmAlert({ ...confirmAlert, show: false })
+      },
+      onCancel: () => setConfirmAlert({ ...confirmAlert, show: false }),
+    })
   }
 
   // Obtener el ícono según el tipo de dispositivo
@@ -391,6 +421,27 @@ const Dispositivos = () => {
     )
   }
 
+  // Componente de alerta de confirmación
+  const ConfirmAlert = ({ message, onConfirm, onCancel }) => {
+    return (
+      <div className="alert-overlay">
+        <div className="modal-container confirm-container">
+          <div className="confirm-modal">
+            <p>{message}</p>
+            <div className="confirm-buttons">
+              <button className="confirm-button cancel" onClick={onCancel}>
+                Cancelar
+              </button>
+              <button className="alert-button accept" onClick={onConfirm}>
+                Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="devices-container">
       <div className="user-card">
@@ -404,6 +455,15 @@ const Dispositivos = () => {
         {/* Mensajes de alerta */}
         {alert.show && (
           <AlertModal message={alert.message} type={alert.type} onClose={() => setAlert({ ...alert, show: false })} />
+        )}
+
+        {/* Alerta de confirmación */}
+        {confirmAlert.show && (
+          <ConfirmAlert
+            message={confirmAlert.message}
+            onConfirm={confirmAlert.onConfirm}
+            onCancel={confirmAlert.onCancel}
+          />
         )}
 
         {/* Buscador */}
@@ -425,7 +485,7 @@ const Dispositivos = () => {
           dispositivos={getCurrentPageItems()}
           setSelectedDevice={setSelectedDevice}
           setShowDetailModal={setShowDetailModal}
-          deleteDevice={deleteDevice}
+          deleteDevice={confirmDelete}
           getDeviceIcon={getDeviceIcon}
         />
 
@@ -488,7 +548,7 @@ const Dispositivos = () => {
                 <DeviceForm
                   device={selectedDevice}
                   setDevice={setSelectedDevice}
-                  onSubmit={updateDevice}
+                  onSubmit={() => confirmSaveChanges(selectedDevice.id, selectedDevice)}
                   posiciones={posiciones}
                   sedes={sedes}
                   usuarios={usuarios}
