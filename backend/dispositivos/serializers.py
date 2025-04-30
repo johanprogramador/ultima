@@ -1,4 +1,4 @@
-from rest_framework import serializers
+from rest_framework import serializers # type: ignore
 from django.contrib.auth import authenticate
 from django.contrib.auth.hashers import make_password
 from django.utils.translation import gettext_lazy as _

@@ -124,7 +124,7 @@ const Login = () => {
                 <div className="form-container sign-in">
                     <form onSubmit={handleSubmit}>
                         <Logo className="logo" style={{ width: '220px', height: 'auto', padding: '10px' }} />
-                        <span>Iniciar sesión</span>
+                        <h5>Iniciar sesión</h5>
                         
                         <input
                             type="text"

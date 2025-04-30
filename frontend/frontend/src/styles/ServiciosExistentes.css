@@ -519,7 +519,6 @@
   text-align: center;
   z-index: 2001;
   animation: fadeIn 0.3s ease-out;
-  
 }
 
 .alert-buttons {
@@ -575,3 +574,6 @@
 .modal-container {
   z-index: 1001;
 }
+
+
+

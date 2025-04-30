@@ -16,6 +16,8 @@ from django.utils.timezone import now, timedelta
 from django.utils import timezone
 import logging
 from django.contrib.auth import get_user
+from django.db.models.signals import pre_delete
+
 
 class Sede(models.Model):
     nombre = models.CharField(max_length=100, unique=True)
@@ -139,8 +141,8 @@ class Posicion(models.Model):
     bordeDoble = models.BooleanField(default=False)
     bordeDetalle = models.JSONField(default=dict)
     piso = models.CharField(max_length=50)
-    sede = models.ForeignKey(Sede, on_delete=models.CASCADE, related_name="posiciones", null=True, blank=True)
-    servicio = models.ForeignKey(Servicios, on_delete=models.SET_NULL, related_name="posiciones", null=True, blank=True)
+    sede = models.ForeignKey('Sede', on_delete=models.CASCADE, related_name="posiciones", null=True, blank=True)
+    servicio = models.ForeignKey('Servicios', on_delete=models.SET_NULL, related_name="posiciones", null=True, blank=True)
     dispositivos = models.ManyToManyField('Dispositivo', related_name='posiciones', blank=True)
     mergedCells = models.JSONField(default=list)
 
@@ -158,10 +160,39 @@ class Posicion(models.Model):
             raise ValidationError(f"Una posición no puede tener más de {self.MAX_DISPOSITIVOS} dispositivos.")
 
     def save(self, *args, **kwargs):
-        # Asegurarse que dispositivos sea una lista válida
-        if not hasattr(self, 'dispositivos'):
-            self.dispositivos = []
+        # Variable para controlar si debemos guardar los dispositivos después
+        save_dispositivos = False
+        dispositivos_temp = None
+        
+        # Si es un nuevo objeto y tiene dispositivos asignados
+        if not self.pk and hasattr(self, '_dispositivos_temp'):
+            dispositivos_temp = self._dispositivos_temp
+            save_dispositivos = True
+            delattr(self, '_dispositivos_temp')
+        
+        # Si se está eliminando el servicio, restablecer el color al valor por defecto
+        if self.servicio_id is None and 'servicio' in kwargs.get('update_fields', []):
+            self.color = "#FFFFFF"  # Color por defecto
+            self.colorFuente = "#000000"
+            if 'update_fields' in kwargs:
+                kwargs['update_fields'].extend(['color', 'colorFuente'])
+        
+        # Si se asigna un servicio, actualizar el color según el servicio
+        if self.servicio_id and (not self.pk or 'servicio' in kwargs.get('update_fields', [])):
+            self.color = self.servicio.color
+            if 'update_fields' in kwargs:
+                kwargs['update_fields'].append('color')
+        
+        # Primero guardamos el objeto para obtener un ID
         super().save(*args, **kwargs)
+        
+        # Si hay dispositivos temporales, los asignamos después de guardar
+        if save_dispositivos and dispositivos_temp:
+            self.dispositivos.set(dispositivos_temp)
+            
+        # Validar el límite de dispositivos después de guardar
+        if self.dispositivos.count() > self.MAX_DISPOSITIVOS:
+            raise ValidationError(f"Una posición no puede tener más de {self.MAX_DISPOSITIVOS} dispositivos.")
 
     def cantidad_dispositivos(self):
         return self.dispositivos.count()
@@ -169,6 +200,23 @@ class Posicion(models.Model):
     class Meta:
         verbose_name = "Posición"
         verbose_name_plural = "Posiciones"
+
+@receiver(pre_delete, sender='dispositivos.Servicios')
+def handle_servicio_delete(sender, instance, **kwargs):
+    """
+    Cuando se elimina un servicio, actualiza todas las posiciones relacionadas:
+    - Elimina la referencia al servicio
+    - Restablece el color al valor por defecto
+    """
+    # Importar aquí para evitar dependencias circulares
+    from .models import Posicion
+    
+    # Actualizar todas las posiciones que tenían este servicio
+    Posicion.objects.filter(servicio=instance).update(
+        servicio=None,
+        color="#FFFFFF",  # Color por defecto
+        colorFuente="#000000"
+    )
 
 class Dispositivo(models.Model):
     TIPOS_DISPOSITIVOS = [

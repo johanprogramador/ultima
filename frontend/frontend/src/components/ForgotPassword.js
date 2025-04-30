@@ -61,10 +61,10 @@ const ForgotPassword = ({ onBackToLogin }) => {
         <div className="forgot-password-container">
           <form onSubmit={handleSubmit}>
             <Logo className="logo" style={{ width: "220px", height: "auto", padding: "10px" }} />
-            <span>Restablecer tu contraseña</span>
+            <h5>Restablecer tu contraseña</h5>
 
             {/* Mensajes de éxito y error */}
-            {message && <p className="success-message">{message}</p>}
+            {message && <h5 className="success-message">{message}</h5>}
             {error && <p className="error-message">{error}</p>}
 
             <input

@@ -453,6 +453,9 @@ function FloorPlan() {
   // Nuevo estado para el filtro de servicio en las estadísticas
   const [selectedService, setSelectedService] = useState("")
 
+  // Add a new state for the selected sede:
+  const [selectedSede, setSelectedSede] = useState("")
+
   // Función para cargar los datos de los selectores
   const fetchSelectorData = async () => {
     try {
@@ -1604,27 +1607,30 @@ function FloorPlan() {
     })
   }
 
-  // Modificar la variable filteredPositions para incluir el filtro de servicio
+  // Modify the filteredPositions variable definition to include filtering by sede:
   const filteredPositions = filterPositionsByService(
     Object.values(positions).filter((pos) => {
-      // Si estamos mostrando todas las posiciones, solo aplicamos el filtro de búsqueda
+      // If we're showing all positions, apply search and sede filters
       if (showAllPositions) {
         return (
-          searchTerm === "" ||
-          (pos.nombre && pos.nombre.toLowerCase().includes(searchTerm.toLowerCase())) ||
-          (pos.servicio &&
-            typeof pos.servicio === "object" &&
-            pos.servicio.nombre &&
-            pos.servicio.nombre.toLowerCase().includes(searchTerm.toLowerCase())) ||
-          (pos.servicio &&
-            typeof pos.servicio === "string" &&
-            getServiceName(pos.servicio).toLowerCase().includes(searchTerm.toLowerCase()))
+          // Apply sede filter if one is selected
+          (selectedSede === "" || pos.sede == selectedSede) &&
+          (searchTerm === "" ||
+            (pos.nombre && pos.nombre.toLowerCase().includes(searchTerm.toLowerCase())) ||
+            (pos.servicio &&
+              typeof pos.servicio === "object" &&
+              pos.servicio.nombre &&
+              pos.servicio.nombre.toLowerCase().includes(searchTerm.toLowerCase())) ||
+            (pos.servicio &&
+              typeof pos.servicio === "string" &&
+              getServiceName(pos.servicio).toLowerCase().includes(searchTerm.toLowerCase())))
         )
       }
 
-      // Si estamos mostrando solo un piso, aplicamos ambos filtros
+      // If we're showing only one floor, apply floor, sede, and search filters
       return (
         pos.piso === selectedPiso &&
+        (selectedSede === "" || pos.sede == selectedSede) &&
         (searchTerm === "" ||
           (pos.nombre && pos.nombre.toLowerCase().includes(searchTerm.toLowerCase())) ||
           (pos.servicio &&
@@ -2202,7 +2208,10 @@ function FloorPlan() {
           </div>
 
           {/* Modificar los botones de navegación para establecer directamente el modo deseado */}
-          <div className="action-buttonn" style={{ marginLeft: "10px" }}>
+          <div
+            className="action-buttonn"
+            style={{ marginLeft: "10px", display: "flex", alignItems: "center", flexWrap: "wrap", gap: "10px" }}
+          >
             <button
               className={`action-buttonn ${viewMode === "plano" ? "active" : ""}`}
               onClick={() => setViewMode("plano")}
@@ -2228,7 +2237,7 @@ function FloorPlan() {
             </button>
 
             {/* Checkbox para mostrar todas las posiciones */}
-            <label style={{ display: "flex", alignItems: "center", marginLeft: "10px" }}>
+            <label style={{ display: "flex", alignItems: "center" }}>
               <input
                 type="checkbox"
                 checked={showAllPositions}
@@ -2237,6 +2246,29 @@ function FloorPlan() {
               />
               Mostrar todas las posiciones
             </label>
+          </div>
+          {/* Selector de sede */}
+          <div className="action-buttonn">
+            <select
+              value={selectedSede}
+              onChange={(e) => setSelectedSede(e.target.value)}
+              style={{
+                padding: "6px 10px",
+                backgroundColor: "#6c63ff",
+                border: "none",
+                borderRadius: "4px",
+                color: "white",
+                fontSize: "0.9rem",
+                cursor: "pointer",
+              }}
+            >
+              <option value="">Todas las sedes</option>
+              {sedes.map((sede) => (
+                <option key={sede.id} value={sede.id}>
+                  {sede.nombre}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
       </div>

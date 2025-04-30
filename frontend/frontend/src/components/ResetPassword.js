@@ -71,11 +71,11 @@ const ResetPassword = () => {
                 <div className="reset-password-container">
                     <form onSubmit={handleSubmit}>
                         <Logo className="logo" style={{ width: '220px', height: 'auto', padding: '10px' }} />
-                        <span>Restablecer tu contraseña</span>
+                        <h5>Restablecer tu contraseña</h5>
 
                         {/* Mensajes de error y éxito */}
                         {error && <p className="error-message">{error}</p>}
-                        {successMessage && <p className="success-message">{successMessage}</p>}
+                        {successMessage && <h5 className="success-message">{successMessage}</h5>}
 
                         <input
                             type="password"
