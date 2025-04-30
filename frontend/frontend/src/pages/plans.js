@@ -1,3 +1,4 @@
+/* eslint-disable eqeqeq */
 "use client"
 
 import { useState, useEffect, useRef } from "react"
@@ -438,6 +439,7 @@ function FloorPlan() {
   const [loading, setLoading] = useState(false)
   const [notification, setNotification] = useState({ show: false, message: "", type: "success" })
   const tableContainerRef = useRef(null)
+  // eslint-disable-next-line no-unused-vars
   const [defaultDeviceId, setDefaultDeviceId] = useState(null)
   const [showAllPositions, setShowAllPositions] = useState(false)
   const [allDevices, setAllDevices] = useState([]) // Todos los dispositivos disponibles
@@ -579,6 +581,7 @@ function FloorPlan() {
   useEffect(() => {
     fetchSelectorData()
     fetchPositions()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []) // Ya no depende de selectedPiso para cargar todas las posiciones
 
   // Función para obtener el color del servicio por ID
