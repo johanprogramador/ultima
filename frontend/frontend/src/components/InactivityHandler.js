@@ -9,14 +9,28 @@
         if (!token) return;
 
         let inactivityTimer;
+        let keepaliveInterval;
         const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
 
         const resetTimer = () => {
         clearTimeout(inactivityTimer);
         inactivityTimer = setTimeout(() => {
-            logout();
-            window.location.href = '/login';
-        }, 1800000); // 30 minutos
+            // Primero intentar hacer keepalive antes de cerrar sesión
+            const performLogout = async () => {
+            try {
+                await api.post('auth/keepalive/', {}, {
+                headers: { Authorization: `Bearer ${token}` }
+                });
+                // Si el keepalive tiene éxito, reiniciamos el timer
+                resetTimer();
+            } catch (error) {
+                console.error('Keepalive error:', error);
+                logout();
+                window.location.href = '/login';
+            }
+            };
+            performLogout();
+        }, 1800000); // 30 minutos de inactividad
         };
 
         const setupListeners = () => {
@@ -26,27 +40,14 @@
         resetTimer(); // Inicia el timer por primera vez
         };
 
-        const keepalive = async () => {
-        try {
-            await api.post('auth/keepalive/', {}, {
-            headers: { Authorization: `Bearer ${token}` }
-            });
-        } catch (error) {
-            console.error('Keepalive error:', error);
-            logout();
-            window.location.href = '/login';
-        }
-        };
-
         setupListeners();
-        const keepaliveInterval = setInterval(keepalive, 240000); // 4 minutos
 
         return () => {
         events.forEach(event => {
             window.removeEventListener(event, resetTimer);
         });
         clearTimeout(inactivityTimer);
-        clearInterval(keepaliveInterval);
+        if (keepaliveInterval) clearInterval(keepaliveInterval);
         };
     }, [token, logout]);
 

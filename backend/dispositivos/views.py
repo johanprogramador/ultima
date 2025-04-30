@@ -76,7 +76,7 @@ def login_user(request):
             request.session.flush()
         username = request.data.get('username', '').strip()
         password = request.data.get('password', '').strip()
-        sede_id = request.data.get('sede_id', None)  # Nuevo campo para la sede
+        sede_id = request.data.get('sede_id', None)
         
         if not username or not password:
             return Response(
@@ -84,11 +84,6 @@ def login_user(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        if not sede_id:
-            return Response(
-                {'error': 'Debe seleccionar una sede'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
         user = authenticate(username=username, password=password)
         
         if not user:
@@ -105,37 +100,60 @@ def login_user(request):
                 status=status.HTTP_403_FORBIDDEN
             )
 
-        try:
-            sede = Sede.objects.get(id=sede_id)
-            if not user.sedes.filter(id=sede_id).exists():  # Asumiendo una relación ManyToMany
+        # Lógica diferente según el rol del usuario
+        if user.rol == 'admin':
+            # Admin puede ingresar sin sede
+            sede = None
+            sede_id = None
+            sede_nombre = None
+        elif user.rol == 'coordinador':
+            # Coordinador debe tener sede
+            if not sede_id:
                 return Response(
-                    {'error': 'No tiene permisos para acceder a esta sede'},
-                    status=status.HTTP_403_FORBIDDEN
+                    {'error': 'Debe seleccionar una sede'},
+                    status=status.HTTP_400_BAD_REQUEST
                 )
-        except Sede.DoesNotExist:
+            
+            try:
+                sede = Sede.objects.get(id=sede_id)
+                # Verificar que el coordinador tenga esta sede asignada
+                if not user.sedes.filter(id=sede_id).exists():
+                    return Response(
+                        {'error': 'No tiene permisos para acceder a esta sede'},
+                        status=status.HTTP_403_FORBIDDEN
+                    )
+                sede_nombre = sede.nombre
+            except Sede.DoesNotExist:
+                return Response(
+                    {'error': 'Sede no encontrada'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+        else:
+            # Para otros roles no definidos (por si acaso)
             return Response(
-                {'error': 'Sede no encontrada'},
-                status=status.HTTP_404_NOT_FOUND
+                {'error': 'Rol de usuario no válido'},
+                status=status.HTTP_403_FORBIDDEN
             )
         
         # Iniciar sesión correctamente
         django_login(request, user)
         request.session['last_activity'] = timezone.now().isoformat()
-        request.session['sede_id'] = sede_id  # Almacenar la sede en la sesión
+        if sede_id:
+            request.session['sede_id'] = sede_id  # Solo almacenar sede si existe
         
         # Generar tokens JWT
         refresh = RefreshToken.for_user(user)
         
-        logger.info(f"Login exitoso para usuario: {username} en sede: {sede.nombre}")
+        logger.info(f"Login exitoso para usuario: {username} (Rol: {user.rol})")
         
         return Response({
             'access': str(refresh.access_token),
             'refresh': str(refresh),
             'username': user.username,
             'email': user.email,
-            'is_admin': user.is_superuser, 
+            'rol': user.rol,
             'sede_id': sede_id,
-            'sede_nombre': sede.nombre,
+            'sede_nombre': sede_nombre if user.rol == 'coordinador' else None,
             'sessionid': request.session.session_key,
             'message': 'Autenticación exitosa'
         }, status=status.HTTP_200_OK)

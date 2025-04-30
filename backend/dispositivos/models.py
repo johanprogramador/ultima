@@ -107,9 +107,9 @@ class RolUser(AbstractUser):
 
 class Servicios(models.Model):
     nombre = models.CharField(max_length=100)
-    codigo_analitico = models.CharField(max_length=255, null=True, blank=True)  
+    codigo_analitico = models.CharField(max_length=255, null=True, blank=True, unique=True)  # Agregado unique=True
     sedes = models.ManyToManyField('Sede', related_name="servicios")
-    color = ColorField(default="#FFFFFF")  # Campo de color con selector en Django Admin
+    color = ColorField(default="#FFFFFF")
 
     def __str__(self):
         return f"{self.nombre} ({self.codigo_analitico})"
@@ -117,7 +117,7 @@ class Servicios(models.Model):
     class Meta:
         verbose_name = "Servicios"
         verbose_name_plural = "Servicios"
-
+        
 class Posicion(models.Model):
     ESTADOS = [
         ('disponible', 'Disponible'),

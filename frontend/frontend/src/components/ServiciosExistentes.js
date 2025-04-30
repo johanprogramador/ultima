@@ -32,7 +32,7 @@ const ServiciosExistentes = () => {
     onConfirm: null,
     onCancel: null,
   })
-  const [servicePositions, setServicePositions] = useState({}) // Nuevo estado para conteo de posiciones
+  const [servicePositions, setServicePositions] = useState({})
 
   // Estados para búsqueda y paginación
   const [searchTerm, setSearchTerm] = useState("")
@@ -163,6 +163,25 @@ const ServiciosExistentes = () => {
         return
       }
 
+      // Validar si el código analítico ya existe en otro servicio
+      if (updatedServiceData.codigo_analitico) {
+        const codigoExists = services.some(
+          service => service.id !== serviceId && 
+          service.codigo_analitico && 
+          service.codigo_analitico.toLowerCase() === updatedServiceData.codigo_analitico.toLowerCase()
+        )
+        
+        if (codigoExists) {
+          setAlert({
+            show: true,
+            message: "El código analítico ya existe en otro servicio. Por favor ingrese uno diferente.",
+            type: "error",
+          })
+          setIsLoading(false)
+          return
+        }
+      }
+
       const payload = {
         nombre: updatedServiceData.nombre,
         codigo_analitico: updatedServiceData.codigo_analitico,
@@ -182,9 +201,18 @@ const ServiciosExistentes = () => {
       })
     } catch (error) {
       console.error("Error al editar el servicio:", error)
+      let errorMessage = "Hubo un error al editar el servicio."
+      
+      // Manejar específicamente el error de código duplicado
+      if (error.response && error.response.data && 
+          error.response.data.codigo_analitico && 
+          error.response.data.codigo_analitico.includes("ya existe")) {
+        errorMessage = "El código analítico ya existe en otro servicio. Por favor ingrese uno diferente."
+      }
+
       setAlert({
         show: true,
-        message: "Hubo un error al editar el servicio.",
+        message: errorMessage,
         type: "error",
       })
     } finally {
@@ -198,7 +226,7 @@ const ServiciosExistentes = () => {
     try {
       await axios.delete(`http://127.0.0.1:8000/api/servicios/${serviceId}/`)
       fetchServices()
-      fetchServicePositions() // Actualizar conteo después de eliminar
+      fetchServicePositions()
       setAlert({
         show: true,
         message: "Servicio eliminado exitosamente.",
@@ -274,6 +302,24 @@ const ServiciosExistentes = () => {
       return
     }
 
+    // Validar si el código analítico ya existe (solo si se proporcionó)
+    if (newService.codigo_analitico) {
+      const codigoExists = services.some(
+        service => service.codigo_analitico && 
+        service.codigo_analitico.toLowerCase() === newService.codigo_analitico.toLowerCase()
+      )
+      
+      if (codigoExists) {
+        setAlert({
+          show: true,
+          message: "El código analítico ya existe. Por favor ingrese uno diferente.",
+          type: "error",
+        })
+        setIsLoading(false)
+        return
+      }
+    }
+
     try {
       const payload = {
         nombre: newService.nombre,
@@ -298,9 +344,18 @@ const ServiciosExistentes = () => {
       })
     } catch (error) {
       console.error("Error al agregar el servicio:", error)
+      let errorMessage = "Hubo un error al agregar el servicio."
+      
+      // Manejar específicamente el error de código duplicado
+      if (error.response && error.response.data && 
+          error.response.data.codigo_analitico && 
+          error.response.data.codigo_analitico.includes("ya existe")) {
+        errorMessage = "El código analítico ya existe. Por favor ingrese uno diferente."
+      }
+
       setAlert({
         show: true,
-        message: "Hubo un error al agregar el servicio.",
+        message: errorMessage,
         type: "error",
       })
     } finally {
@@ -355,22 +410,6 @@ const ServiciosExistentes = () => {
       setShowDetailModal(false)
       setShowForm(false)
     }
-  }
-
-  // Componente de alerta
-  const AlertModal = ({ message, type, onClose }) => {
-    return (
-      <div className="modal-overlay">
-        <div className="modal-container alert-container">
-          <div className={`alert-modal ${type}`}>
-            <p>{message}</p>
-            <button className="close-button" onClick={onClose}>
-              &times;
-            </button>
-          </div>
-        </div>
-      </div>
-    )
   }
 
   // Componente de alerta de confirmación
@@ -432,14 +471,6 @@ const ServiciosExistentes = () => {
             <FaPlus />
           </button>
         </div>
-
-        {alert.show && (
-          <AlertModal 
-            message={alert.message} 
-            type={alert.type} 
-            onClose={() => setAlert({ ...alert, show: false })} 
-          />
-        )}
 
         {confirmAlert.show && (
           <ConfirmAlert
@@ -556,6 +587,22 @@ const ServiciosExistentes = () => {
               >
                 &times;
               </button>
+              
+              {/* Alerta para el modal de edición */}
+              {alert.show && (
+                <div className="form-alert-container">
+                  <div className={`alert-modal ${alert.type}`}>
+                    <p>{alert.message}</p>
+                    <button 
+                      className="close-button" 
+                      onClick={() => setAlert({ ...alert, show: false })}
+                    >
+                      &times;
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div className="modal-content">
                 <h1 className="modal-title">Detalles del servicio</h1>
                 <div className="input-group">
@@ -626,6 +673,22 @@ const ServiciosExistentes = () => {
               >
                 &times;
               </button>
+              
+              {/* Alerta para el modal de creación */}
+              {alert.show && (
+                <div className="form-alert-container">
+                  <div className={`alert-modal ${alert.type}`}>
+                    <p>{alert.message}</p>
+                    <button 
+                      className="close-button" 
+                      onClick={() => setAlert({ ...alert, show: false })}
+                    >
+                      &times;
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div className="modal-content">
                 <h1 className="modal-title">Agregar Servicio</h1>
                 <div className="input-group">
