@@ -964,12 +964,14 @@ def importar_dispositivos(request):
         return JsonResponse({'error': f"Error inesperado: {str(e)}"}, status=500)
 
 @csrf_exempt
+@permission_classes([AllowAny])
 def subir_excel(request):
     if request.method == "POST" and request.FILES.get("archivo"):
         archivo = request.FILES["archivo"]
         return importar_excel(archivo)
     return JsonResponse({"error": "No se recibió ningún archivo"}, status=400)
 
+@permission_classes([AllowAny])
 def descargar_excel(request):
     return exportar_excel()
 

@@ -556,6 +556,20 @@ function FloorPlan() {
     }
   }
 
+  // Modificar el useEffect para seleccionar automáticamente la primera sede
+  useEffect(() => {
+    fetchSelectorData()
+    fetchPositions()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Añadir un nuevo useEffect para seleccionar la primera sede automáticamente
+  useEffect(() => {
+    if (sedes.length > 0 && !selectedSede) {
+      setSelectedSede(sedes[0].id.toString())
+    }
+  }, [sedes, selectedSede])
+
   // Función para actualizar el mapa de dispositivos asignados
   const updateAssignedDevices = (positionsData) => {
     const assignedMap = {}
@@ -578,11 +592,6 @@ function FloorPlan() {
   }
 
   // Cargar datos iniciales
-  useEffect(() => {
-    fetchSelectorData()
-    fetchPositions()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []) // Ya no depende de selectedPiso para cargar todas las posiciones
 
   // Función para obtener el color del servicio por ID
   const getServiceColor = (serviceId) => {
@@ -745,12 +754,26 @@ function FloorPlan() {
     }, 3000)
   }
 
+  // Añadir un nuevo estado para el modal de importación
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false)
+  const [importFile, setImportFile] = useState(null)
+
   // Reemplazar la función importFromExcel completa with this versión mejorada
   const importFromExcel = async (e) => {
     const file = e.target.files[0]
     if (!file) return
 
+    // Guardar el archivo y mostrar el modal de selección de sede
+    setImportFile(file)
+    setIsImportModalOpen(true)
+  }
+
+  // Añadir una nueva función para procesar la importación después de seleccionar la sede
+  const processImportFile = async () => {
+    if (!importFile) return
+
     setLoading(true)
+    setIsImportModalOpen(false)
     showNotification("Procesando archivo Excel...", "success")
 
     try {
@@ -760,6 +783,13 @@ function FloorPlan() {
           "Error: No hay dispositivos disponibles en el sistema. Debe crear al menos un dispositivo antes de importar.",
           "error",
         )
+        setLoading(false)
+        return
+      }
+
+      // 1.5 Verificar que tengamos una sede seleccionada
+      if (!selectedSede) {
+        showNotification("Error: Debe seleccionar una sede antes de importar.", "error")
         setLoading(false)
         return
       }
@@ -776,7 +806,9 @@ function FloorPlan() {
       // 3. Si el usuario confirma, eliminar las posiciones existentes
       if (confirmDelete) {
         showNotification("Eliminando posiciones existentes...", "success")
-        const currentPositions = Object.values(positions).filter((p) => p.piso === selectedPiso)
+        const currentPositions = Object.values(positions).filter(
+          (p) => p.piso === selectedPiso && p.sede == selectedSede,
+        )
 
         for (const pos of currentPositions) {
           try {
@@ -817,6 +849,7 @@ function FloorPlan() {
           const newPositions = {}
           let savedCount = 0
           let errorCount = 0
+          let skippedCount = 0
 
           // 9. Procesar primero las celdas combinadas
           for (const mergeInfo of mergedCellsInfo) {
@@ -858,6 +891,7 @@ function FloorPlan() {
               colorFuente: getContrastColor(cellColor),
               colorOriginal: colorInfo.originalColor,
               piso: selectedPiso,
+              sede: selectedSede, // Asignar la sede seleccionada
               mergedCells: mergedCells,
               dispositivos: [], // Inicialmente sin dispositivos
               borde: false,
@@ -921,6 +955,7 @@ function FloorPlan() {
                 Object.values(positions).some(
                   (pos) =>
                     pos.piso === selectedPiso &&
+                    pos.sede == selectedSede &&
                     pos.mergedCells.some((c) => c.row === actualRow && c.col === colLetter),
                 )
               ) {
@@ -935,8 +970,9 @@ function FloorPlan() {
               const colorInfo = cell ? extractColor(cell) : { color: "#FFFFFF", originalColor: "FFFFFF" }
               const cellColor = cleanHexColor(colorInfo.color)
 
-              // Omitir celdas completamente vacías (sin color ni texto)
-              if (cellColor === "#FFFFFF" && cellValue === "") {
+              // Omitir celdas individuales que estén vacías (sin texto)
+              if (cellValue === "") {
+                skippedCount++
                 continue
               }
 
@@ -952,6 +988,7 @@ function FloorPlan() {
                 colorFuente: getContrastColor(cellColor),
                 colorOriginal: colorInfo.originalColor,
                 piso: selectedPiso,
+                sede: selectedSede, // Asignar la sede seleccionada
                 mergedCells: [{ row: actualRow, col: colLetter }],
                 dispositivos: [], // Inicialmente sin dispositivos
                 borde: false,
@@ -1011,7 +1048,7 @@ function FloorPlan() {
           })
 
           // 12. Mostrar resumen final
-          const resultMessage = `Importación completada: ${savedCount} posiciones guardadas${
+          const resultMessage = `Importación completada: ${savedCount} posiciones guardadas, ${skippedCount} celdas vacías omitidas${
             errorCount > 0 ? `, ${errorCount} errores` : ""
           }`
           showNotification(resultMessage, errorCount > 0 ? "error" : "success")
@@ -1023,19 +1060,22 @@ function FloorPlan() {
           showNotification("Error al procesar el archivo Excel: " + (error.message || "Error desconocido"), "error")
         } finally {
           setLoading(false)
+          setImportFile(null)
         }
       }
 
       reader.onerror = () => {
         setLoading(false)
+        setImportFile(null)
         showNotification("Error al leer el archivo", "error")
       }
 
-      reader.readAsArrayBuffer(file)
+      reader.readAsArrayBuffer(importFile)
     } catch (error) {
       console.error("Error en la importación:", error)
       showNotification("Error en la importación: " + (error.message || "Error desconocido"), "error")
       setLoading(false)
+      setImportFile(null)
     }
   }
 
@@ -1419,7 +1459,7 @@ function FloorPlan() {
         leftDouble: false,
       },
       piso: selectedPiso,
-      sede: "",
+      sede: selectedSede, // Usar la sede seleccionada en el filtro
       servicio: "",
       dispositivos: [],
       mergedCells: selectedCells,
@@ -1469,7 +1509,7 @@ function FloorPlan() {
         leftDouble: false,
       },
       piso: selectedPiso,
-      sede: "",
+      sede: selectedSede, // Usar la sede seleccionada en el filtro
       servicio: "",
       dispositivos: [],
       mergedCells: [],
@@ -1613,27 +1653,29 @@ function FloorPlan() {
   // Modify the filteredPositions variable definition to include filtering by sede:
   const filteredPositions = filterPositionsByService(
     Object.values(positions).filter((pos) => {
-      // If we're showing all positions, apply search and sede filters
+      // Siempre filtrar por sede seleccionada
+      if (!selectedSede || pos.sede != selectedSede) {
+        return false
+      }
+
+      // Si estamos mostrando todas las posiciones, solo aplicar filtro de búsqueda
       if (showAllPositions) {
         return (
-          // Apply sede filter if one is selected
-          (selectedSede === "" || pos.sede == selectedSede) &&
-          (searchTerm === "" ||
-            (pos.nombre && pos.nombre.toLowerCase().includes(searchTerm.toLowerCase())) ||
-            (pos.servicio &&
-              typeof pos.servicio === "object" &&
-              pos.servicio.nombre &&
-              pos.servicio.nombre.toLowerCase().includes(searchTerm.toLowerCase())) ||
-            (pos.servicio &&
-              typeof pos.servicio === "string" &&
-              getServiceName(pos.servicio).toLowerCase().includes(searchTerm.toLowerCase())))
+          searchTerm === "" ||
+          (pos.nombre && pos.nombre.toLowerCase().includes(searchTerm.toLowerCase())) ||
+          (pos.servicio &&
+            typeof pos.servicio === "object" &&
+            pos.servicio.nombre &&
+            pos.servicio.nombre.toLowerCase().includes(searchTerm.toLowerCase())) ||
+          (pos.servicio &&
+            typeof pos.servicio === "string" &&
+            getServiceName(pos.servicio).toLowerCase().includes(searchTerm.toLowerCase()))
         )
       }
 
-      // If we're showing only one floor, apply floor, sede, and search filters
+      // Si estamos mostrando solo un piso, aplicar filtros de piso y búsqueda
       return (
         pos.piso === selectedPiso &&
-        (selectedSede === "" || pos.sede == selectedSede) &&
         (searchTerm === "" ||
           (pos.nombre && pos.nombre.toLowerCase().includes(searchTerm.toLowerCase())) ||
           (pos.servicio &&
@@ -2086,7 +2128,7 @@ function FloorPlan() {
     // Función para obtener el nombre del dispositivo por ID
     const getDeviceName = (deviceId) => {
       const device = allDevices.find((d) => d.id === Number(deviceId) || d.id === deviceId)
-      return device ? device.nombre : `Dispositivo ${deviceId}`
+      return device ? device.nombre || device.serial || `Dispositivo ${deviceId}` : `Dispositivo ${deviceId}`
     }
 
     return (
@@ -2141,9 +2183,28 @@ function FloorPlan() {
                 </td>
                 <td>{typeof position.sede === "object" ? position.sede?.nombre : getSedeName(position.sede)}</td>
                 <td>
-                  {position.dispositivos && position.dispositivos.length > 0
-                    ? position.dispositivos.map((d) => getDeviceName(d)).join(", ")
-                    : "Sin dispositivos"}
+                  {position.dispositivos && position.dispositivos.length > 0 ? (
+                    <div style={{ maxWidth: "250px" }}>
+                      {position.dispositivos.map((deviceId, index) => (
+                        <div
+                          key={index}
+                          style={{
+                            display: "inline-block",
+                            backgroundColor: "#444",
+                            color: "#fff",
+                            padding: "2px 6px",
+                            borderRadius: "4px",
+                            margin: "2px",
+                            fontSize: "0.8rem",
+                          }}
+                        >
+                          {getDeviceName(deviceId)}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <span style={{ color: "#888" }}>Sin dispositivos</span>
+                  )}
                 </td>
                 <td>
                   <button
@@ -2250,22 +2311,25 @@ function FloorPlan() {
               Mostrar todas las posiciones
             </label>
           </div>
-          {/* Selector de sede */}
+          {/* Selector de sede - Obligatorio seleccionar una */}
           <div className="action-buttonn">
             <select
               value={selectedSede}
               onChange={(e) => setSelectedSede(e.target.value)}
               style={{
                 padding: "6px 10px",
-                backgroundColor: "#6c63ff",
+                backgroundColor: selectedSede ? "#6c63ff" : "#ff4757",
                 border: "none",
                 borderRadius: "4px",
                 color: "white",
                 fontSize: "0.9rem",
                 cursor: "pointer",
               }}
+              required
             >
-              <option value="">Todas las sedes</option>
+              <option value="" disabled>
+                Seleccione una sede
+              </option>
               {sedes.map((sede) => (
                 <option key={sede.id} value={sede.id}>
                   {sede.nombre}
@@ -2819,6 +2883,72 @@ function FloorPlan() {
                   Eliminar
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal para seleccionar sede al importar */}
+      {isImportModalOpen && (
+        <div className="modal-overlay">
+          <div className="modal" style={{ maxWidth: "400px" }}>
+            <button
+              className="close-button"
+              onClick={() => {
+                setIsImportModalOpen(false)
+                setImportFile(null)
+              }}
+            >
+              <FaTimes />
+            </button>
+            <h2 className="h11">Seleccionar Sede para Importación</h2>
+
+            <div style={{ marginBottom: "20px" }}>
+              <p>Seleccione la sede donde se guardarán las posiciones importadas:</p>
+
+              <select
+                value={selectedSede}
+                onChange={(e) => setSelectedSede(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "10px",
+                  marginTop: "10px",
+                  borderRadius: "4px",
+                  border: "1px solid #444",
+                  backgroundColor: "#333",
+                  color: "#fff",
+                  fontSize: "16px",
+                }}
+              >
+                <option value="" disabled>
+                  Seleccione una sede
+                </option>
+                {sedes.map((sede) => (
+                  <option key={sede.id} value={sede.id}>
+                    {sede.nombre}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="modal-buttons">
+              <button
+                className="save-button"
+                onClick={processImportFile}
+                disabled={!selectedSede}
+                style={{ opacity: selectedSede ? 1 : 0.5 }}
+              >
+                Continuar Importación
+              </button>
+              <button
+                className="delete-button"
+                onClick={() => {
+                  setIsImportModalOpen(false)
+                  setImportFile(null)
+                }}
+              >
+                Cancelar
+              </button>
             </div>
           </div>
         </div>
