@@ -420,55 +420,161 @@ class Historial(models.Model):
         verbose_name = "Historial"
         verbose_name_plural = "Historiales"
 
+
+from django.db import models
+from django.conf import settings
+from django.core.exceptions import ValidationError
+from django.db.models.signals import pre_save, post_save
+from django.dispatch import receiver
+from django.db import transaction
+import logging
+
+logger = logging.getLogger(__name__)
 class Movimiento(models.Model):
-    dispositivo = models.ForeignKey('Dispositivo', on_delete=models.CASCADE, related_name="movimientos")
-    encargado = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="movimientos")
+    UBICACIONES = (
+        ('BODEGA', 'Bodega'),
+        ('SEDE', 'Sede'),
+        ('REPARACION', 'Reparación'),
+        ('BAJA', 'Baja'),
+        ('OTRO', 'Otro'),
+    )
+    
+    dispositivo = models.ForeignKey(
+        'Dispositivo',
+        on_delete=models.CASCADE,
+        related_name='movimientos'
+    )
+    encargado = models.ForeignKey(
+        'RolUser',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='movimientos_realizados'
+    )
     fecha_movimiento = models.DateTimeField(auto_now_add=True)
-    posicion_origen = models.ForeignKey('Posicion', on_delete=models.SET_NULL, 
-                                     null=True, blank=True, 
-                                     related_name='movimientos_origen')
-    posicion_destino = models.ForeignKey('Posicion', on_delete=models.SET_NULL, 
-                                      null=True, blank=True, 
-                                      related_name='movimientos_destino')
-    observacion = models.TextField(null=True, blank=True)
-    sede = models.ForeignKey(Sede, on_delete=models.SET_NULL, null=True, blank=True, related_name="movimientos")
-
-    def clean(self):
-        # Validación existente
-        if self.posicion_origen == self.posicion_destino:
-            raise ValidationError("La posición de origen y destino no pueden ser iguales.")
-        
-        # Validar límite de dispositivos en posición destino
-        if self.posicion_destino and self.posicion_destino.dispositivos_relacionados.count() >= Posicion.MAX_DISPOSITIVOS:
-            raise ValidationError(f"La posición destino ya tiene el máximo de {Posicion.MAX_DISPOSITIVOS} dispositivos.")
-
-    def save(self, *args, **kwargs):
-        self.clean()
-        
-        if not self.observacion:
-            origen = self.posicion_origen.nombre if self.posicion_origen else "Sin posición"
-            destino = self.posicion_destino.nombre if self.posicion_destino else "Sin posición"
-            
-            self.observacion = (
-                f"Dispositivo {self.dispositivo.serial} ({self.dispositivo.marca} {self.dispositivo.modelo}) "
-                f"movido de {origen} a {destino} "
-                f"por {self.encargado.get_full_name() if self.encargado else 'Desconocido'}."
-            )
-        
-        if not self.sede and self.dispositivo and self.dispositivo.sede:
-            self.sede = self.dispositivo.sede
-
-        super().save(*args, **kwargs)
-
-    def __str__(self):
-        return f"Movimiento de {self.dispositivo.serial} - {self.fecha_movimiento.strftime('%Y-%m-%d %H:%M:%S')}"
+    posicion_origen = models.ForeignKey(
+        'Posicion',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='movimientos_salida'
+    )
+    posicion_destino = models.ForeignKey(
+        'Posicion',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='movimientos_entrada'
+    )
+    ubicacion_origen = models.CharField(
+        max_length=20,
+        choices=UBICACIONES,
+        null=True,
+        blank=True
+    )
+    ubicacion_destino = models.CharField(
+        max_length=20,
+        choices=UBICACIONES,
+        null=True,
+        blank=True
+    )
+    observacion = models.TextField(blank=True)
+    sede = models.ForeignKey(
+        'Sede',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True
+    )
 
     class Meta:
-        verbose_name = "Movimiento"
-        verbose_name_plural = "Movimientos"
         ordering = ['-fecha_movimiento']
+        verbose_name = 'Movimiento'
+        verbose_name_plural = 'Movimientos'
+        indexes = [
+            models.Index(fields=['fecha_movimiento']),
+            models.Index(fields=['dispositivo']),
+            models.Index(fields=['encargado']),
+        ]
 
-# Signals
+    def __str__(self):
+        return f"Movimiento #{self.id} - {self.dispositivo.serial}"
+
+    def clean(self):
+        # Validación 1: Origen y destino no pueden ser iguales
+        if self.posicion_origen and self.posicion_destino and self.posicion_origen == self.posicion_destino:
+            raise ValidationError("La posición de origen y destino no pueden ser la misma")
+        
+        # Validación 2: Requiere al menos un tipo de origen y destino
+        if not self.posicion_origen and not self.ubicacion_origen:
+            raise ValidationError("Debe especificar una ubicación de origen (posición o tipo)")
+            
+        if not self.posicion_destino and not self.ubicacion_destino:
+            raise ValidationError("Debe especificar una ubicación de destino (posición o tipo)")
+
+    def save(self, *args, **kwargs):
+        # Autocompletar sede si no está especificada
+        if not self.sede:
+            if self.dispositivo and self.dispositivo.sede:
+                self.sede = self.dispositivo.sede
+            elif self.posicion_destino and self.posicion_destino.sede:
+                self.sede = self.posicion_destino.sede
+        
+        # Autogenerar observación si está vacía
+        if not self.observacion:
+            self.observacion = self.generar_observacion()
+        
+        super().save(*args, **kwargs)
+
+    def generar_observacion(self):
+        partes = [f"Dispositivo: {self.dispositivo.serial}"]
+        
+        if self.posicion_origen:
+            partes.append(f"Desde posición: {self.posicion_origen.nombre}")
+        elif self.ubicacion_origen:
+            partes.append(f"Desde: {self.get_ubicacion_origen_display()}")
+        
+        if self.posicion_destino:
+            partes.append(f"Hacia posición: {self.posicion_destino.nombre}")
+        elif self.ubicacion_destino:
+            partes.append(f"Hacia: {self.get_ubicacion_destino_display()}")
+        
+        if self.encargado:
+            partes.append(f"Realizado por: {self.encargado.nombre_completo}")
+        
+        return " | ".join(partes)
+
+# Señales
+@receiver(pre_save, sender='dispositivos.Dispositivo')
+def capturar_posicion_anterior(sender, instance, **kwargs):
+    if instance.pk:
+        try:
+            original = sender.objects.get(pk=instance.pk)
+            instance._posicion_anterior = original.posicion
+        except sender.DoesNotExist:
+            instance._posicion_anterior = None
+
+@receiver(post_save, sender='dispositivos.Dispositivo')
+def registrar_movimiento_automatico(sender, instance, created, **kwargs):
+    if created or not hasattr(instance, '_posicion_anterior'):
+        return
+    
+    if instance._posicion_anterior != instance.posicion:
+        try:
+            request = kwargs.get('request')
+            user = getattr(request, 'user', None) if request else None
+            encargado = user.roluser if (user and hasattr(user, 'roluser')) else None
+            
+            with transaction.atomic():
+                Movimiento.objects.create(
+                    dispositivo=instance,
+                    posicion_origen=instance._posicion_anterior,
+                    posicion_destino=instance.posicion,
+                    encargado=encargado,
+                    observacion="Movimiento automático por cambio de posición",
+                    sede=instance.sede
+                )
+        except Exception as e:
+            logger.error(f"Error al registrar movimiento automático: {str(e)}")
 
 @receiver(pre_save, sender=Dispositivo)
 def guardar_estado_anterior(sender, instance, **kwargs):
@@ -534,86 +640,7 @@ def registrar_cambios_historial(sender, instance, created, **kwargs):
             sede_nombre=sede
         )
 
-# En models.py
-@receiver(post_save, sender=Dispositivo)
-def registrar_movimiento_automatico(sender, instance, created, **kwargs):
-    if created:  # No hacer nada si es creación (las M2M se manejan después)
-        return
 
-    try:
-        dispositivo_anterior = Dispositivo.objects.get(pk=instance.pk)
-        posicion_anterior = dispositivo_anterior.posicion
-        posicion_nueva = instance.posicion
-
-        if posicion_anterior != posicion_nueva:
-            # Obtener el usuario que realizó el cambio
-            request = kwargs.get('request', None)
-            user = request.user if request else None
-            
-            # Validar límite de dispositivos en la nueva posición
-            if posicion_nueva and posicion_nueva.dispositivos.count() >= Posicion.MAX_DISPOSITIVOS:
-                raise ValidationError(
-                    f"La posición destino ya tiene el máximo de {Posicion.MAX_DISPOSITIVOS} dispositivos."
-                )
-            
-            # Quitar de la posición anterior (si existe)
-            if posicion_anterior:
-                posicion_anterior.dispositivos.remove(instance)
-            
-            # Agregar a la nueva posición (si existe)
-            if posicion_nueva:
-                posicion_nueva.dispositivos.add(instance)
-            
-            # Crear registro de movimiento con observación detallada
-            observacion = (
-                f"Cambio de posición desde {'ninguna' if not posicion_anterior else posicion_anterior.nombre} "
-                f"({'ninguna' if not posicion_anterior else posicion_anterior.sede.nombre}) "
-                f"a {'ninguna' if not posicion_nueva else posicion_nueva.nombre} "
-                f"({'ninguna' if not posicion_nueva else posicion_nueva.sede.nombre})"
-            )
-            
-            Movimiento.objects.create(
-                dispositivo=instance,
-                posicion_origen=posicion_anterior,
-                posicion_destino=posicion_nueva,
-                encargado=user,
-                sede=instance.sede,
-                observacion=observacion
-            )
-    except Dispositivo.DoesNotExist:
-        pass
-    except Exception as e:
-        # Revertir cambios si hay error
-        if posicion_anterior:
-            instance.posicion = posicion_anterior
-            instance.save()
-        raise e
-
-@receiver(post_save, sender=Movimiento)
-def handle_movimiento_post_save(sender, instance, created, **kwargs):
-    if created:
-        dispositivo = instance.dispositivo
-        usuario = instance.encargado
-        sede = instance.sede.nombre if instance.sede else None
-
-        origen = instance.posicion_origen.nombre if instance.posicion_origen else "Sin posición"
-        destino = instance.posicion_destino.nombre if instance.posicion_destino else "Sin posición"
-        
-        cambios = (
-            f"El dispositivo {dispositivo.serial} ({dispositivo.marca} {dispositivo.modelo}) "
-            f"fue movido de {origen} a {destino} "
-            f"por {usuario.get_full_name() if usuario else 'Desconocido'}."
-        )
-
-        transaction.on_commit(lambda: Historial.objects.create(
-            dispositivo=dispositivo,
-            usuario=usuario,
-            cambios={"detalle": cambios},
-            tipo_cambio=Historial.TipoCambio.MOVIMIENTO,
-            modelo_afectado="Movimiento",
-            instancia_id=instance.id,
-            sede_nombre=sede
-        ))
 
 @receiver(user_logged_in)
 def registrar_login(sender, request, user, **kwargs):

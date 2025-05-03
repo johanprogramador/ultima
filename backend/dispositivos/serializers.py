@@ -270,6 +270,13 @@ class ServiciosSerializer(serializers.ModelSerializer):
         model = Servicios
         fields = ['id', 'nombre', 'codigo_analitico', 'sedes', 'color']
 
+from rest_framework import serializers
+from django.db import transaction
+from .models import Posicion, Dispositivo, Movimiento
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
+
 class PosicionSerializer(serializers.ModelSerializer):
     dispositivos = serializers.PrimaryKeyRelatedField(
         many=True, 
@@ -286,10 +293,24 @@ class PosicionSerializer(serializers.ModelSerializer):
             'sede': {'required': True}
         }
 
+    def get_authenticated_user(self):
+        """Obtiene el usuario autenticado del contexto de la solicitud"""
+        request = self.context.get('request')
+        if not request or not hasattr(request, 'user'):
+            return None
+        
+        user = request.user
+        if user.is_anonymous:
+            return None
+        
+        return user
+
     def get_cantidad_dispositivos(self, obj):
+        """Obtiene la cantidad de dispositivos asociados a la posición"""
         return obj.dispositivos.count()
 
     def validate(self, data):
+        """Validación personalizada para los datos de la posición"""
         instance = self.instance
         
         # Validación de celdas combinadas
@@ -316,12 +337,11 @@ class PosicionSerializer(serializers.ModelSerializer):
         if data.get("columna") is not None and not data.get("columna").isalpha():
             raise serializers.ValidationError("La columna debe contener solo letras.")
 
-        # Validación EXTRA: Dispositivos deben pertenecer a la misma sede
+        # Validación de dispositivos
         dispositivos_data = data.get('dispositivos')
         sede = data.get('sede', getattr(instance, 'sede', None))
         
         if dispositivos_data and sede:
-            # Obtener todos los dispositivos de una sola consulta para mejorar rendimiento
             dispositivos = Dispositivo.objects.filter(id__in=[d.id for d in dispositivos_data]).select_related('sede')
             
             for dispositivo in dispositivos:
@@ -332,11 +352,101 @@ class PosicionSerializer(serializers.ModelSerializer):
         
         return data
 
+    def create(self, validated_data):
+        """Crea una nueva posición con sus dispositivos asociados"""
+        user = self.get_authenticated_user()
+        dispositivos_data = validated_data.pop('dispositivos', [])
+
+        try:
+            with transaction.atomic():
+                # Crear la posición
+                instance = super().create(validated_data)
+                
+                # Registrar movimiento de creación
+                if user:
+                    Movimiento.objects.create(
+                        dispositivo=None,
+                        posicion_origen=None,
+                        posicion_destino=instance,
+                        encargado=user,
+                        sede=instance.sede,
+                        observacion=f"Creación de posición {instance.nombre}"
+                    )
+                
+                # Validar límite de dispositivos
+                if len(dispositivos_data) > Posicion.MAX_DISPOSITIVOS:
+                    raise serializers.ValidationError({
+                        'dispositivos': f'Máximo {Posicion.MAX_DISPOSITIVOS} dispositivos permitidos'
+                    })
+                
+                # Asignar dispositivos si se proporcionaron
+                if dispositivos_data:
+                    dispositivos_ids = [d.id if isinstance(d, Dispositivo) else d for d in dispositivos_data]
+                    dispositivos = Dispositivo.objects.filter(id__in=dispositivos_ids).select_related('sede')
+                    
+                    for dispositivo in dispositivos:
+                        # Validar sede
+                        if dispositivo.sede_id != instance.sede_id:
+                            raise serializers.ValidationError({
+                                'dispositivos': f'El dispositivo {dispositivo.serial} pertenece a la sede {dispositivo.sede.nombre}, no coincide con {instance.sede.nombre}'
+                            })
+                        
+                        # Remover de posiciones anteriores
+                        posiciones_anteriores = list(dispositivo.posiciones.all())
+                        for pos in posiciones_anteriores:
+                            pos.dispositivos.remove(dispositivo)
+                            
+                            # Registrar movimiento de salida
+                            if user:
+                                Movimiento.objects.create(
+                                    dispositivo=dispositivo,
+                                    posicion_origen=pos,
+                                    posicion_destino=None,
+                                    encargado=user,
+                                    sede=pos.sede,
+                                    observacion=(
+                                        f"Removido para reasignación | "
+                                        f"Destino: {instance.nombre} | "
+                                        f"Por: {user.username if user else 'Sistema'}"
+                                    )
+                                )
+                        
+                        # Agregar a nueva posición
+                        instance.dispositivos.add(dispositivo)
+                        
+                        # Registrar movimiento de entrada
+                        if user:
+                            Movimiento.objects.create(
+                                dispositivo=dispositivo,
+                                posicion_origen=None,
+                                posicion_destino=instance,
+                                encargado=user,
+                                sede=instance.sede,
+                                observacion=(
+                                    f"Asignado a nueva posición {instance.nombre} | "
+                                    f"Sede: {instance.sede.nombre} | "
+                                    f"Por: {user.username if user else 'Sistema'}"
+                                )
+                            )
+                        
+                        # Actualizar dispositivo
+                        dispositivo.posicion = instance
+                        dispositivo.piso = instance.piso
+                        dispositivo.sede = instance.sede
+                        dispositivo.save()
+                
+                return instance
+                
+        except Exception as e:
+            raise serializers.ValidationError({
+                'non_field_errors': f'Error al crear posición: {str(e)}'
+            })
+
     def update(self, instance, validated_data):
-        request = self.context.get('request')
-        user = request.user if request else None
+        """Actualiza una posición existente y gestiona cambios en dispositivos"""
+        user = self.get_authenticated_user()
         dispositivos_data = validated_data.pop('dispositivos', None)
-        
+
         try:
             with transaction.atomic():
                 # 1. Actualizar campos básicos
@@ -344,9 +454,19 @@ class PosicionSerializer(serializers.ModelSerializer):
                     setattr(instance, attr, value)
                 instance.save()
                 
-                # 2. Si se envió lista de dispositivos, procesar cambios
+                # Registrar movimiento de actualización
+                if user:
+                    Movimiento.objects.create(
+                        dispositivo=None,
+                        posicion_origen=None,
+                        posicion_destino=instance,
+                        encargado=user,
+                        sede=instance.sede,
+                        observacion=f"Actualización de posición {instance.nombre}"
+                    )
+                
+                # 2. Procesar cambios en dispositivos si se enviaron
                 if dispositivos_data is not None:
-                    # Convertir a lista de IDs si es necesario
                     dispositivos_ids = [d.id if isinstance(d, Dispositivo) else d for d in dispositivos_data]
                     
                     # Validar límite
@@ -368,18 +488,19 @@ class PosicionSerializer(serializers.ModelSerializer):
                             instance.dispositivos.remove(dispositivo)
                             
                             # Registrar movimiento
-                            Movimiento.objects.create(
-                                dispositivo=dispositivo,
-                                posicion_origen=instance,
-                                posicion_destino=None,
-                                encargado=user,
-                                sede=instance.sede,
-                                observacion=(
-                                    f"Removido de posición {instance.nombre} | "
-                                    f"Sede: {instance.sede.nombre} | "
-                                    f"Por: {user.username if user else 'Sistema'}"
+                            if user:
+                                Movimiento.objects.create(
+                                    dispositivo=dispositivo,
+                                    posicion_origen=instance,
+                                    posicion_destino=None,
+                                    encargado=user,
+                                    sede=instance.sede,
+                                    observacion=(
+                                        f"Removido de posición {instance.nombre} | "
+                                        f"Sede: {instance.sede.nombre} | "
+                                        f"Por: {user.username if user else 'Sistema'}"
+                                    )
                                 )
-                            )
                             
                             # Actualizar dispositivo
                             dispositivo.posicion = None
@@ -392,7 +513,7 @@ class PosicionSerializer(serializers.ModelSerializer):
                         dispositivos_agregar = Dispositivo.objects.filter(id__in=dispositivos_a_agregar).select_related('sede')
                         
                         for dispositivo in dispositivos_agregar:
-                            # Validar que la sede del dispositivo coincida con la de la posición
+                            # Validar que la sede del dispositivo coincida
                             if dispositivo.sede_id != instance.sede_id:
                                 raise serializers.ValidationError({
                                     'dispositivos': f'El dispositivo {dispositivo.serial} pertenece a la sede {dispositivo.sede.nombre}, no coincide con {instance.sede.nombre}'
@@ -404,40 +525,42 @@ class PosicionSerializer(serializers.ModelSerializer):
                                 pos.dispositivos.remove(dispositivo)
                                 
                                 # Registrar movimiento de salida
-                                Movimiento.objects.create(
-                                    dispositivo=dispositivo,
-                                    posicion_origen=pos,
-                                    posicion_destino=None,
-                                    encargado=user,
-                                    sede=pos.sede,
-                                    observacion=(
-                                        f"Removido para reasignación | "
-                                        f"Destino: {instance.nombre} | "
-                                        f"Por: {user.username if user else 'Sistema'}"
+                                if user:
+                                    Movimiento.objects.create(
+                                        dispositivo=dispositivo,
+                                        posicion_origen=pos,
+                                        posicion_destino=None,
+                                        encargado=user,
+                                        sede=pos.sede,
+                                        observacion=(
+                                            f"Removido para reasignación | "
+                                            f"Destino: {instance.nombre} | "
+                                            f"Por: {user.username if user else 'Sistema'}"
+                                        )
                                     )
-                                )
                             
                             # Agregar a nueva posición
                             instance.dispositivos.add(dispositivo)
                             
                             # Registrar movimiento de entrada
-                            Movimiento.objects.create(
-                                dispositivo=dispositivo,
-                                posicion_origen=None,
-                                posicion_destino=instance,
-                                encargado=user,
-                                sede=instance.sede,
-                                observacion=(
-                                    f"Asignado a posición {instance.nombre} | "
-                                    f"Sede: {instance.sede.nombre} | "
-                                    f"Por: {user.username if user else 'Sistema'}"
+                            if user:
+                                Movimiento.objects.create(
+                                    dispositivo=dispositivo,
+                                    posicion_origen=None,
+                                    posicion_destino=instance,
+                                    encargado=user,
+                                    sede=instance.sede,
+                                    observacion=(
+                                        f"Asignado a posición {instance.nombre} | "
+                                        f"Sede: {instance.sede.nombre} | "
+                                        f"Por: {user.username if user else 'Sistema'}"
+                                    )
                                 )
-                            )
                             
                             # Actualizar dispositivo
                             dispositivo.posicion = instance
                             dispositivo.piso = instance.piso
-                            dispositivo.sede = instance.sede  # Asegurar misma sede
+                            dispositivo.sede = instance.sede
                             dispositivo.save()
                 
                 return instance
@@ -445,84 +568,6 @@ class PosicionSerializer(serializers.ModelSerializer):
         except Exception as e:
             raise serializers.ValidationError({
                 'non_field_errors': f'Error al actualizar posición: {str(e)}'
-            })
-
-    def create(self, validated_data):
-        request = self.context.get('request')
-        user = request.user if request else None
-        dispositivos_data = validated_data.pop('dispositivos', [])
-        
-        try:
-            with transaction.atomic():
-                # Crear la posición
-                instance = super().create(validated_data)
-                
-                # Validar límite de dispositivos
-                if len(dispositivos_data) > Posicion.MAX_DISPOSITIVOS:
-                    raise serializers.ValidationError({
-                        'dispositivos': f'Máximo {Posicion.MAX_DISPOSITIVOS} dispositivos permitidos'
-                    })
-                
-                # Asignar dispositivos si se proporcionaron
-                if dispositivos_data:
-                    # Convertir a lista de IDs si es necesario
-                    dispositivos_ids = [d.id if isinstance(d, Dispositivo) else d for d in dispositivos_data]
-                    dispositivos = Dispositivo.objects.filter(id__in=dispositivos_ids).select_related('sede')
-                    
-                    for dispositivo in dispositivos:
-                        # Validar sede
-                        if dispositivo.sede_id != instance.sede_id:
-                            raise serializers.ValidationError({
-                                'dispositivos': f'El dispositivo {dispositivo.serial} pertenece a la sede {dispositivo.sede.nombre}, no coincide con {instance.sede.nombre}'
-                            })
-                        
-                        # Remover de posiciones anteriores
-                        posiciones_anteriores = list(dispositivo.posiciones.all())
-                        for pos in posiciones_anteriores:
-                            pos.dispositivos.remove(dispositivo)
-                            
-                            # Registrar movimiento de salida
-                            Movimiento.objects.create(
-                                dispositivo=dispositivo,
-                                posicion_origen=pos,
-                                posicion_destino=None,
-                                encargado=user,
-                                sede=pos.sede,
-                                observacion=(
-                                    f"Removido para reasignación | "
-                                    f"Destino: {instance.nombre} | "
-                                    f"Por: {user.username if user else 'Sistema'}"
-                                )
-                            )
-                        
-                        # Agregar a nueva posición
-                        instance.dispositivos.add(dispositivo)
-                        
-                        # Registrar movimiento de entrada
-                        Movimiento.objects.create(
-                            dispositivo=dispositivo,
-                            posicion_origen=None,
-                            posicion_destino=instance,
-                            encargado=user,
-                            sede=instance.sede,
-                            observacion=(
-                                f"Asignado a nueva posición {instance.nombre} | "
-                                f"Sede: {instance.sede.nombre} | "
-                                f"Por: {user.username if user else 'Sistema'}"
-                            )
-                        )
-                        
-                        # Actualizar dispositivo
-                        dispositivo.posicion = instance
-                        dispositivo.piso = instance.piso
-                        dispositivo.sede = instance.sede
-                        dispositivo.save()
-                
-                return instance
-                
-        except Exception as e:
-            raise serializers.ValidationError({
-                'non_field_errors': f'Error al crear posición: {str(e)}'
             })
 
 class HistorialSerializer(serializers.ModelSerializer):
@@ -541,35 +586,85 @@ class HistorialSerializer(serializers.ModelSerializer):
     def get_fecha_formateada(self, obj):
         return obj.fecha_modificacion.strftime("%d/%m/%Y %H:%M")
 
+from rest_framework import serializers
+from .models import Movimiento, Dispositivo, Posicion, RolUser
+
 class MovimientoSerializer(serializers.ModelSerializer):
-    dispositivo = DispositivoSerializer(read_only=True)
-    posicion_origen = PosicionSerializer(read_only=True)
-    posicion_destino = PosicionSerializer(read_only=True)
-    encargado = RolUserSerializer(read_only=True)
-    
+    dispositivo_info = serializers.SerializerMethodField()
+    posicion_origen_info = serializers.SerializerMethodField()
+    posicion_destino_info = serializers.SerializerMethodField()
+    encargado_info = serializers.SerializerMethodField()
+    ubicacion_origen_display = serializers.CharField(source='get_ubicacion_origen_display', read_only=True)
+    ubicacion_destino_display = serializers.CharField(source='get_ubicacion_destino_display', read_only=True)
+
     class Meta:
         model = Movimiento
-        fields = '__all__'
+        fields = [
+            'id',
+            'fecha_movimiento',
+            'dispositivo',
+            'dispositivo_info',
+            'posicion_origen',
+            'posicion_origen_info',
+            'posicion_destino',
+            'posicion_destino_info',
+            'ubicacion_origen',
+            'ubicacion_origen_display',
+            'ubicacion_destino',
+            'ubicacion_destino_display',
+            'encargado',
+            'encargado_info',
+            'observacion',
+            'sede'
+        ]
         extra_kwargs = {
             'dispositivo': {'required': True},
-            'encargado': {'required': False},
-            'fecha_movimiento': {'read_only': True}
+            'fecha_movimiento': {'read_only': True},
+            'encargado': {'required': False, 'allow_null': True}
         }
 
+    def get_dispositivo_info(self, obj):
+        return {
+            'serial': obj.dispositivo.serial,
+            'modelo': obj.dispositivo.modelo,
+            'tipo': obj.dispositivo.get_tipo_display()
+        }
+
+    def get_posicion_origen_info(self, obj):
+        if obj.posicion_origen:
+            return {
+                'nombre': obj.posicion_origen.nombre,
+                'piso': obj.posicion_origen.piso
+            }
+        return None
+
+    def get_posicion_destino_info(self, obj):
+        if obj.posicion_destino:
+            return {
+                'nombre': obj.posicion_destino.nombre,
+                'piso': obj.posicion_destino.piso
+            }
+        return None
+
+    def get_encargado_info(self, obj):
+        if obj.encargado:
+            return {
+                'nombre': obj.encargado.nombre_completo,
+                'username': obj.encargado.user.username
+            }
+        return None
+
     def validate(self, data):
-        posicion_destino = data.get('posicion_destino')
-        
-        if posicion_destino:
-            if posicion_destino.dispositivos_relacionados.count() >= Posicion.MAX_DISPOSITIVOS:
+        if data.get('posicion_destino'):
+            if data['posicion_destino'].dispositivos.count() >= Posicion.MAX_DISPOSITIVOS:
                 raise serializers.ValidationError(
-                    f"La posición destino ya tiene el máximo de {Posicion.MAX_DISPOSITIVOS} dispositivos."
+                    {'posicion_destino': f'La posición ya tiene el máximo de {Posicion.MAX_DISPOSITIVOS} dispositivos'}
                 )
-        
         return data
 
     def create(self, validated_data):
         request = self.context.get('request')
-        if request and request.user:
-            validated_data['encargado'] = request.user
+        if request and hasattr(request, 'user') and hasattr(request.user, 'roluser'):
+            validated_data['encargado'] = request.user.roluser
         
         return super().create(validated_data)

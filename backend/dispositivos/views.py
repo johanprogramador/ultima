@@ -1174,83 +1174,155 @@ def dispositivo_choices(request):
     
     
 # vistas para los movimientos
-class MovimientoViewSet(viewsets.ReadOnlyModelViewSet):
-    permission_classes = [AllowAny]
-    queryset = Movimiento.objects.all().select_related('dispositivo', 'encargado')
+class MovimientoViewSet(viewsets.ModelViewSet):
+    queryset = Movimiento.objects.select_related(
+        'dispositivo',
+        'posicion_origen',
+        'posicion_destino',
+        'encargado',
+        'encargado__user',
+        'sede'
+    ).all()
     serializer_class = MovimientoSerializer
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['ubicacion_origen', 'ubicacion_destino']
+    
+    filterset_fields = {
+        'dispositivo': ['exact'],
+        'encargado': ['exact'],
+        'sede': ['exact'],
+        'fecha_movimiento': ['date', 'date__gte', 'date__lte'],
+        'ubicacion_origen': ['exact'],
+        'ubicacion_destino': ['exact'],
+    }
+    
     search_fields = [
-        'dispositivo__serial', 
+        'dispositivo__serial',
         'dispositivo__modelo',
-        'dispositivo__marca',
-        'dispositivo__placa_cu',
-        'encargado__nombre',
-        'encargado__username',
-        'encargado__email',
-        'observacion'
+        'observacion',
+        'encargado__user__username',
+        'encargado__nombre_completo'
     ]
-    ordering_fields = ['fecha_movimiento']
-    ordering = ['-fecha_movimiento']  # Orden por defecto
+    
+    ordering_fields = [
+        'fecha_movimiento',
+        'dispositivo__serial'
+    ]
+    
+    ordering = ['-fecha_movimiento']
+
+    def get_permissions(self):
+        if self.action in ['opciones_filtro']:
+            return [AllowAny()]
+        return [IsAuthenticated()]
 
     def get_queryset(self):
         queryset = super().get_queryset()
         
-        # Filtros adicionales
+        # Filtro por usuario no admin
+        if not self.request.user.is_staff:
+            queryset = queryset.filter(encargado__user=self.request.user)
+        
+        # Filtro por fechas personalizado
         fecha_inicio = self.request.query_params.get('fecha_inicio')
         fecha_fin = self.request.query_params.get('fecha_fin')
-        dispositivo_id = self.request.query_params.get('dispositivo_id')
         
-        try:
-            if fecha_inicio:
-                fecha_inicio_dt = datetime.strptime(fecha_inicio, '%Y-%m-%d')
-                queryset = queryset.filter(fecha_movimiento__gte=fecha_inicio_dt)
+        if fecha_inicio:
+            try:
+                fecha_inicio = datetime.strptime(fecha_inicio, '%Y-%m-%d').date()
+                queryset = queryset.filter(fecha_movimiento__date__gte=fecha_inicio)
+            except ValueError as e:
+                logger.error(f"Error al parsear fecha_inicio: {str(e)}")
                 
-            if fecha_fin:
-                fecha_fin_dt = datetime.strptime(fecha_fin, '%Y-%m-%d') + timedelta(days=1)
-                queryset = queryset.filter(fecha_movimiento__lte=fecha_fin_dt)
-        except ValueError as e:
-            pass
-            
-        if dispositivo_id:
-            if dispositivo_id.isdigit():
-                queryset = queryset.filter(dispositivo__id=dispositivo_id)
-            else:
-                queryset = queryset.filter(
-                    Q(dispositivo__serial__icontains=dispositivo_id) |
-                    Q(dispositivo__placa_cu__icontains=dispositivo_id) |
-                    Q(dispositivo__modelo__icontains=dispositivo_id) |
-                    Q(dispositivo__marca__icontains=dispositivo_id)
-                )
+        if fecha_fin:
+            try:
+                fecha_fin = datetime.strptime(fecha_fin, '%Y-%m-%d').date()
+                queryset = queryset.filter(fecha_movimiento__date__lte=fecha_fin)
+            except ValueError as e:
+                logger.error(f"Error al parsear fecha_fin: {str(e)}")
                 
         return queryset
 
     @action(detail=False, methods=['get'])
     def opciones_filtro(self, request):
-        dispositivos = Dispositivo.objects.all().order_by('-id')[:100]
-        usuarios = RolUser.objects.filter(is_active=True).order_by('-id')[:50]
+        sede_id = request.query_params.get('sede_id')
         
-        return Response({
-            'ubicaciones': dict(Movimiento.UBICACIONES),
-            'dispositivos': [
-                {
-                    'id': d.id,
-                    'marca': d.marca,
-                    'modelo': d.modelo,
-                    'serial': d.serial,
-                    'placa_cu': d.placa_cu
-                } 
-                for d in dispositivos
-            ],
-            'usuarios': [
-                {
-                    'id': u.id,
-                    'nombre': u.get_full_name() or u.username,
-                    'email': u.email,
-                    'rol': u.rol
-                }
-                for u in usuarios
-            ],
-            'ordering_fields': self.ordering_fields,
-            'search_fields': self.search_fields
-        })
+        if not sede_id:
+            return Response(
+                {'error': 'El parámetro sede_id es requerido'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            data = {
+                'ubicaciones': dict(Ubicacion.UBICACIONES),
+                'dispositivos': list(Dispositivo.objects.filter(
+                    sede_id=sede_id
+                ).values('id', 'marca', 'modelo', 'serial')),
+                'usuarios': list(RolUser.objects.filter(
+                    sede_id=sede_id
+                ).values('id', 'nombre_completo', 'user__username', 'user__email'))
+            }
+            
+            return Response(data)
+            
+        except Exception as e:
+            logger.error(f"Error en opciones_filtro: {str(e)}")
+            return Response(
+                {'error': 'Error al obtener opciones de filtro'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=True, methods=['post'])
+    def revertir(self, request, pk=None):
+        movimiento = self.get_object()
+        
+        try:
+            with transaction.atomic():
+                # Crear movimiento inverso
+                nuevo_movimiento = Movimiento.objects.create(
+                    dispositivo=movimiento.dispositivo,
+                    posicion_origen=movimiento.posicion_destino,
+                    posicion_destino=movimiento.posicion_origen,
+                    encargado=request.user.roluser,
+                    observacion=f"Reversión del movimiento #{movimiento.id}",
+                    sede=movimiento.sede
+                )
+                
+                # Actualizar posición del dispositivo
+                if movimiento.posicion_origen:
+                    dispositivo = movimiento.dispositivo
+                    
+                    # Remover de posición actual
+                    if dispositivo.posicion:
+                        dispositivo.posicion.dispositivos.remove(dispositivo)
+                    
+                    # Agregar a posición original
+                    movimiento.posicion_origen.dispositivos.add(dispositivo)
+                    
+                    # Actualizar dispositivo
+                    dispositivo.posicion = movimiento.posicion_origen
+                    dispositivo.piso = movimiento.posicion_origen.piso
+                    dispositivo.save()
+                
+                serializer = self.get_serializer(nuevo_movimiento)
+                return Response(serializer.data, status=status.HTTP_201_CREATED)
+                
+        except Exception as e:
+            logger.error(f"Error al revertir movimiento: {str(e)}")
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @action(detail=False, methods=['get'])
+    def resumen(self, request):
+        queryset = self.filter_queryset(self.get_queryset())
+        
+        resumen = queryset.values(
+            'dispositivo__tipo',
+            'ubicacion_destino'
+        ).annotate(
+            total=Count('id')
+        ).order_by('-total')
+        
+        return Response(resumen)
