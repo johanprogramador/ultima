@@ -1256,7 +1256,7 @@ class MovimientoViewSet(viewsets.ModelViewSet):
         
         try:
             data = {
-                'ubicaciones': dict(Ubicacion.UBICACIONES),
+                'ubicaciones': dict(Ubicacion.UBICACIONES), # type: ignore
                 'dispositivos': list(Dispositivo.objects.filter(
                     sede_id=sede_id
                 ).values('id', 'marca', 'modelo', 'serial')),

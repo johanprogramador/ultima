@@ -270,7 +270,7 @@ class ServiciosSerializer(serializers.ModelSerializer):
         model = Servicios
         fields = ['id', 'nombre', 'codigo_analitico', 'sedes', 'color']
 
-from rest_framework import serializers
+from rest_framework import serializers # type: ignore # type: ignore
 from django.db import transaction
 from .models import Posicion, Dispositivo, Movimiento
 from django.contrib.auth import get_user_model
@@ -586,7 +586,7 @@ class HistorialSerializer(serializers.ModelSerializer):
     def get_fecha_formateada(self, obj):
         return obj.fecha_modificacion.strftime("%d/%m/%Y %H:%M")
 
-from rest_framework import serializers
+from rest_framework import serializers # type: ignore
 from .models import Movimiento, Dispositivo, Posicion, RolUser
 
 class MovimientoSerializer(serializers.ModelSerializer):
