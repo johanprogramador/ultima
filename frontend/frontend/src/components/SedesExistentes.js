@@ -48,6 +48,13 @@ const SedesExistentes = () => {
   // API base URL
   const API_URL = "http://127.0.0.1:8000/api/sedes/"
 
+  // Función para validar ciudad
+  const validateCity = (city) => {
+    // Expresión regular que solo permite letras, espacios y acentos
+    const cityRegex = /^[A-Za-zÁÉÍÓÚáéíóúñÑ\s]+$/
+    return cityRegex.test(city)
+  }
+
   // Función para aplicar filtros
   const applyFilters = useCallback((term) => {
     if (!sedes.length) return
@@ -72,7 +79,7 @@ const SedesExistentes = () => {
   // Manejador de cambio en el buscador
   const handleSearchChange = (e) => {
     const value = e.target.value
-    setSearchTerm(value) // Actualiza el estado inmediatamente para que el input responda
+    setSearchTerm(value)
 
     // Limpiar el timeout anterior si existe
     if (searchTimeoutRef.current) {
@@ -130,7 +137,7 @@ const SedesExistentes = () => {
       }
 
       setSedes(sedesData)
-      setFilteredSedes(sedesData) // Inicializar filteredSedes con todos los datos
+      setFilteredSedes(sedesData)
       setTotalPages(Math.ceil(sedesData.length / itemsPerPage))
     } catch (error) {
       console.error("Error al obtener sedes:", error)
@@ -168,7 +175,13 @@ const SedesExistentes = () => {
     
     if (!sedeData.nombre?.trim()) errors.push("El nombre es obligatorio")
     if (isNew && !sedeData.direccion?.trim()) errors.push("La dirección es obligatoria")
-    if (isNew && !sedeData.ciudad?.trim()) errors.push("La ciudad es obligatoria")
+    
+    // Validación de ciudad
+    if (isNew && !sedeData.ciudad?.trim()) {
+      errors.push("La ciudad es obligatoria")
+    } else if (sedeData.ciudad && !validateCity(sedeData.ciudad)) {
+      errors.push("La ciudad solo puede contener letras y espacios")
+    }
     
     return errors
   }
@@ -491,12 +504,20 @@ const SedesExistentes = () => {
                     onChange={(e) => setSelectedSede({ ...selectedSede, ciudad: e.target.value })}
                     placeholder="Ciudad"
                     disabled={isLoading}
+                    className={
+                      selectedSede.ciudad && !validateCity(selectedSede.ciudad) 
+                        ? "input-error input-invalid" 
+                        : ""
+                    }
                   />
+                  {selectedSede.ciudad && !validateCity(selectedSede.ciudad) && (
+                    <p className="error-message">La ciudad solo puede contener letras y espacios</p>
+                  )}
                 </div>
                 <button 
                   className="create-button" 
                   onClick={() => confirmSaveChanges(selectedSede.id, selectedSede)}
-                  disabled={isLoading}
+                  disabled={isLoading || (selectedSede.ciudad && !validateCity(selectedSede.ciudad))}
                 >
                   {isLoading ? "Guardando..." : "Guardar cambios"}
                 </button>
@@ -548,13 +569,22 @@ const SedesExistentes = () => {
                     value={newSede.ciudad}
                     onChange={(e) => setNewSede({ ...newSede, ciudad: e.target.value })}
                     disabled={isLoading}
-                    className={!newSede.ciudad?.trim() ? "input-error" : ""}
+                    className={
+                      !newSede.ciudad?.trim() 
+                        ? "input-error" 
+                        : !validateCity(newSede.ciudad) 
+                          ? "input-error input-invalid" 
+                          : ""
+                    }
                   />
+                  {newSede.ciudad && !validateCity(newSede.ciudad) && (
+                    <p className="error-message">La ciudad solo puede contener letras y espacios</p>
+                  )}
                 </div>
                 <button 
                   className="create-button" 
                   onClick={addSede}
-                  disabled={isLoading}
+                  disabled={isLoading || !newSede.nombre?.trim() || !newSede.direccion?.trim() || !newSede.ciudad?.trim() || !validateCity(newSede.ciudad)}
                 >
                   {isLoading ? "Creando..." : "Agregar"}
                 </button>

@@ -34,9 +34,20 @@ import {
   Title,
 } from "chart.js"
 import { Doughnut } from "react-chartjs-2"
+import ChartDataLabels from "chartjs-plugin-datalabels"
 
 // Register ChartJS components
-ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, PointElement, LineElement, Title)
+ChartJS.register(
+  ArcElement,
+  Tooltip,
+  Legend,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  ChartDataLabels,
+)
 
 const API_URL = "http://127.0.0.1:8000/"
 
@@ -458,6 +469,14 @@ function FloorPlan() {
   // Add a new state for the selected sede:
   const [selectedSede, setSelectedSede] = useState("")
 
+  // Estado para alertas de confirmación
+  const [confirmAlert, setConfirmAlert] = useState({
+    show: false,
+    message: "",
+    onConfirm: null,
+    onCancel: null,
+  })
+
   // Función para cargar los datos de los selectores
   const fetchSelectorData = async () => {
     try {
@@ -763,9 +782,20 @@ function FloorPlan() {
     const file = e.target.files[0]
     if (!file) return
 
-    // Guardar el archivo y mostrar el modal de selección de sede
-    setImportFile(file)
-    setIsImportModalOpen(true)
+    setConfirmAlert({
+      show: true,
+      message: "¿Estás seguro de que deseas importar posiciones desde este archivo Excel?",
+      onConfirm: () => {
+        // Guardar el archivo y mostrar el modal de selección de sede
+        setImportFile(file)
+        setIsImportModalOpen(true)
+        setConfirmAlert({ ...confirmAlert, show: false })
+      },
+      onCancel: () => {
+        e.target.value = null // Limpiar el input file
+        setConfirmAlert({ ...confirmAlert, show: false })
+      },
+    })
   }
 
   // Añadir una nueva función para procesar la importación después de seleccionar la sede
@@ -794,31 +824,23 @@ function FloorPlan() {
         return
       }
 
-      // Obtener el primer dispositivo disponible para usar como valor por defecto
-      const defaultDevice = allDevices[0].id
-      console.log("Dispositivo por defecto para importación:", defaultDevice)
-
-      // 2. Preguntar al usuario si desea eliminar las posiciones existentes
-      const confirmDelete = window.confirm(
-        "¿Desea eliminar las posiciones existentes en este piso antes de importar? Seleccione 'Cancelar' para agregar las nuevas posiciones sin eliminar las existentes.",
+      // 2. Preguntar al usuario si desea actualizar las posiciones existentes o crear nuevas
+      const confirmAction = window.confirm(
+        "¿Cómo desea proceder con la importación?\n\n" +
+          "- Seleccione 'Aceptar' para actualizar las posiciones existentes y agregar las nuevas.\n" +
+          "- Seleccione 'Cancelar' para cancelar el proceso de importación.",
       )
 
-      // 3. Si el usuario confirma, eliminar las posiciones existentes
-      if (confirmDelete) {
-        showNotification("Eliminando posiciones existentes...", "success")
-        const currentPositions = Object.values(positions).filter(
-          (p) => p.piso === selectedPiso && p.sede == selectedSede,
-        )
-
-        for (const pos of currentPositions) {
-          try {
-            await axios.delete(`${API_URL}api/posiciones/${pos.id}/`)
-            console.log(`Posición eliminada: ${pos.id}`)
-          } catch (error) {
-            console.error(`Error al eliminar posición ${pos.id}:`, error)
-          }
-        }
+      // Si el usuario cancela, detener el proceso
+      if (!confirmAction) {
+        setLoading(false)
+        setImportFile(null)
+        showNotification("Importación cancelada por el usuario", "success")
+        return
       }
+
+      // Ya no eliminamos posiciones existentes, solo actualizamos o creamos nuevas
+      const existingPositions = Object.values(positions)
 
       // 4. Leer el archivo Excel
       const reader = new FileReader()
@@ -848,8 +870,19 @@ function FloorPlan() {
           const processedCells = {} // Para rastrear qué celdas ya se han procesado
           const newPositions = {}
           let savedCount = 0
+          let updatedCount = 0
           let errorCount = 0
           let skippedCount = 0
+
+          // Crear un mapa de posiciones existentes por ubicación (fila-columna-piso-sede)
+          const existingPositionsMap = {}
+          existingPositions.forEach((pos) => {
+            // Para cada celda en mergedCells, crear una clave única
+            pos.mergedCells.forEach((cell) => {
+              const key = `${cell.row}-${cell.col}-${pos.piso}-${pos.sede}`
+              existingPositionsMap[key] = pos
+            })
+          })
 
           // 9. Procesar primero las celdas combinadas
           for (const mergeInfo of mergedCellsInfo) {
@@ -921,20 +954,54 @@ function FloorPlan() {
               }
             }
 
-            // Guardar TODAS las celdas combinadas, incluso si están vacías
-            try {
-              console.log("Guardando posición combinada:", position)
-              const response = await axios.post(`${API_URL}api/posiciones/`, position)
-              if (response.status === 201) {
-                newPositions[response.data.id] = response.data
-                savedCount++
+            // Verificar si ya existe una posición en esta ubicación
+            const mainCellKey = `${position.fila}-${position.columna}-${position.piso}-${position.sede}`
+            const existingPosition = existingPositionsMap[mainCellKey]
+
+            if (confirmAction && existingPosition) {
+              // Modo actualización: Actualizar la posición existente
+              try {
+                // Preservar los dispositivos y otros datos que no queremos sobrescribir
+                const updatedPosition = {
+                  ...position,
+                  id: existingPosition.id,
+                  dispositivos: existingPosition.dispositivos, // Mantener los dispositivos asignados
+                  estado: existingPosition.estado, // Mantener el estado
+                  detalles: existingPosition.detalles || position.detalles, // Mantener detalles si existen
+                  // Puedes agregar más campos que quieras preservar
+                }
+
+                console.log("Actualizando posición existente:", updatedPosition)
+                const response = await axios.put(`${API_URL}api/posiciones/${existingPosition.id}/`, updatedPosition)
+
+                if (response.status === 200) {
+                  newPositions[response.data.id] = response.data
+                  updatedCount++
+                }
+              } catch (error) {
+                console.error("Error al actualizar posición combinada:", error)
+                if (error.response?.data) {
+                  console.error("Detalles del error:", JSON.stringify(error.response.data))
+                }
+                errorCount++
               }
-            } catch (error) {
-              console.error("Error al guardar posición combinada:", error)
-              if (error.response?.data) {
-                console.error("Detalles del error:", JSON.stringify(error.response.data))
+            } else {
+              // Modo creación: Guardar como nueva posición
+              try {
+                console.log("Guardando nueva posición combinada:", position)
+                const response = await axios.post(`${API_URL}api/posiciones/`, position)
+
+                if (response.status === 201) {
+                  newPositions[response.data.id] = response.data
+                  savedCount++
+                }
+              } catch (error) {
+                console.error("Error al guardar posición combinada:", error)
+                if (error.response?.data) {
+                  console.error("Detalles del error:", JSON.stringify(error.response.data))
+                }
+                errorCount++
               }
-              errorCount++
             }
           }
 
@@ -946,19 +1013,6 @@ function FloorPlan() {
 
               // Omitir celdas que ya están en áreas combinadas
               if (processedCells[`${actualRow}-${colLetter}`]) {
-                continue
-              }
-
-              // Omitir celdas que ya están ocupadas en las posiciones existentes (si no confirmó eliminar)
-              if (
-                !confirmDelete &&
-                Object.values(positions).some(
-                  (pos) =>
-                    pos.piso === selectedPiso &&
-                    pos.sede == selectedSede &&
-                    pos.mergedCells.some((c) => c.row === actualRow && c.col === colLetter),
-                )
-              ) {
                 continue
               }
 
@@ -1018,24 +1072,59 @@ function FloorPlan() {
                 }
               }
 
-              // Guardar la posición
-              try {
-                const response = await axios.post(`${API_URL}api/posiciones/`, position)
-                if (response.status === 201) {
-                  newPositions[response.data.id] = response.data
-                  savedCount++
+              // Verificar si ya existe una posición en esta ubicación
+              const cellKey = `${actualRow}-${colLetter}-${selectedPiso}-${selectedSede}`
+              const existingPosition = existingPositionsMap[cellKey]
 
-                  // Mostrar progreso cada 10 posiciones
-                  if (savedCount % 10 === 0) {
-                    showNotification(`Importando... ${savedCount} posiciones guardadas`, "success")
+              if (confirmAction && existingPosition) {
+                // Modo actualización: Actualizar la posición existente
+                try {
+                  // Preservar los dispositivos y otros datos que no queremos sobrescribir
+                  const updatedPosition = {
+                    ...position,
+                    id: existingPosition.id,
+                    dispositivos: existingPosition.dispositivos, // Mantener los dispositivos asignados
+                    estado: existingPosition.estado, // Mantener el estado
+                    detalles: existingPosition.detalles || position.detalles, // Mantener detalles si existen
+                    // Puedes agregar más campos que quieras preservar
                   }
+
+                  console.log("Actualizando posición existente:", updatedPosition)
+                  const response = await axios.put(`${API_URL}api/posiciones/${existingPosition.id}/`, updatedPosition)
+
+                  if (response.status === 200) {
+                    newPositions[response.data.id] = response.data
+                    updatedCount++
+                  }
+                } catch (error) {
+                  console.error("Error al actualizar posición individual:", error)
+                  if (error.response?.data) {
+                    console.error("Detalles del error:", JSON.stringify(error.response.data))
+                  }
+                  errorCount++
                 }
-              } catch (error) {
-                console.error("Error al guardar posición individual:", error)
-                if (error.response?.data) {
-                  console.error("Detalles del error:", JSON.stringify(error.response.data))
+              } else {
+                // Modo creación: Guardar como nueva posición
+                try {
+                  console.log("Guardando nueva posición individual:", position)
+                  const response = await axios.post(`${API_URL}api/posiciones/`, position)
+
+                  if (response.status === 201) {
+                    newPositions[response.data.id] = response.data
+                    savedCount++
+
+                    // Mostrar progreso cada 10 posiciones
+                    if (savedCount % 10 === 0) {
+                      showNotification(`Importando... ${savedCount} posiciones guardadas`, "success")
+                    }
+                  }
+                } catch (error) {
+                  console.error("Error al guardar posición individual:", error)
+                  if (error.response?.data) {
+                    console.error("Detalles del error:", JSON.stringify(error.response.data))
+                  }
+                  errorCount++
                 }
-                errorCount++
               }
             }
           }
@@ -1048,7 +1137,7 @@ function FloorPlan() {
           })
 
           // 12. Mostrar resumen final
-          const resultMessage = `Importación completada: ${savedCount} posiciones guardadas, ${skippedCount} celdas vacías omitidas${
+          const resultMessage = `Importación completada: ${savedCount} posiciones nuevas, ${updatedCount} posiciones actualizadas, ${skippedCount} celdas vacías omitidas${
             errorCount > 0 ? `, ${errorCount} errores` : ""
           }`
           showNotification(resultMessage, errorCount > 0 ? "error" : "success")
@@ -1081,146 +1170,154 @@ function FloorPlan() {
 
   // Función para exportar a Excel
   const exportToExcel = () => {
-    try {
-      setLoading(true)
-      showNotification("Preparando exportación...", "success")
+    setConfirmAlert({
+      show: true,
+      message: "¿Estás seguro de que deseas exportar las posiciones a Excel?",
+      onConfirm: async () => {
+        try {
+          setLoading(true)
+          showNotification("Preparando exportación...", "success")
 
-      // Filtrar las posiciones según el modo de visualización
-      const positionsArray = showAllPositions
-        ? Object.values(positions)
-        : Object.values(positions).filter((pos) => pos.piso === selectedPiso)
+          // Filtrar las posiciones según el modo de visualización
+          const positionsArray = showAllPositions
+            ? Object.values(positions)
+            : Object.values(positions).filter((pos) => pos.piso === selectedPiso)
 
-      if (positionsArray.length === 0) {
-        showNotification("No hay posiciones para exportar", "error")
-        setLoading(false)
-        return
-      }
-
-      // Crear una copia de los datos para la exportación
-      const exportData = positionsArray.map((pos) => {
-        // Convertir los objetos complejos a formatos más simples para Excel
-        return {
-          ...pos,
-          dispositivos: Array.isArray(pos.dispositivos)
-            ? pos.dispositivos.map((d) => (typeof d === "object" ? d.id : d)).join(", ")
-            : pos.dispositivos,
-          servicio: pos.servicio ? (typeof pos.servicio === "object" ? pos.servicio.id : pos.servicio) : "",
-          sede: pos.sede ? (typeof pos.sede === "object" ? pos.sede.id : pos.sede) : "",
-          // Convertir mergedCells a formato de texto para Excel
-          mergedCellsText: JSON.stringify(pos.mergedCells),
-          // Convertir bordeDetalle a formato de texto para Excel
-          bordeDetalleText: JSON.stringify(pos.bordeDetalle),
-        }
-      })
-
-      // Crear la hoja de cálculo
-      const worksheet = XLSX.utils.json_to_sheet(exportData)
-
-      // Aplicar estilos a las celdas
-      const range = XLSX.utils.decode_range(worksheet["!ref"])
-
-      for (let R = range.s.r + 1; R <= range.e.r; R++) {
-        for (let C = range.s.c; C <= range.e.c; C++) {
-          const cellAddress = XLSX.utils.encode_cell({ r: R, c: C })
-          const cell = worksheet[cellAddress]
-
-          if (!cell) continue
-
-          const position = exportData[R - 1]
-          if (position) {
-            // Inicializar estilos si no existen
-            if (!cell.s) cell.s = {}
-            if (!cell.s.fill) cell.s.fill = {}
-            if (!cell.s.font) cell.s.font = {}
-
-            // Aplicar color de fondo
-            const colorHex = position.servicio
-              ? getServiceColor(position.servicio).replace("#", "")
-              : position.colorOriginal || position.color.replace("#", "")
-
-            cell.s.fill = {
-              patternType: "solid",
-              fgColor: { rgb: colorHex },
-              bgColor: { rgb: colorHex },
-            }
-
-            // Aplicar color de texto
-            cell.s.font.color = { rgb: position.colorFuente.replace("#", "") }
+          if (positionsArray.length === 0) {
+            showNotification("No hay posiciones para exportar", "error")
+            setLoading(false)
+            return
           }
-        }
-      }
 
-      // Procesar celdas combinadas
-      const merges = []
-      positionsArray.forEach((pos) => {
-        if (pos.mergedCells && pos.mergedCells.length > 1) {
-          try {
-            const cells = pos.mergedCells
-            const rows = cells.map((c) => Number(c.row))
-            const cols = cells.map((c) => XLSX.utils.decode_col(c.col))
-
-            const startRow = Math.min(...rows) - 1
-            const endRow = Math.max(...rows) - 1
-            const startCol = Math.min(...cols)
-            const endCol = Math.max(...cols)
-
-            if (startRow >= 0 && startCol >= 0 && endRow >= startRow && endCol >= startCol) {
-              merges.push({
-                s: { r: startRow, c: startCol },
-                e: { r: endRow, c: endCol },
-              })
+          // Crear una copia de los datos para la exportación
+          const exportData = positionsArray.map((pos) => {
+            // Convertir los objetos complejos a formatos más simples para Excel
+            return {
+              ...pos,
+              dispositivos: Array.isArray(pos.dispositivos)
+                ? pos.dispositivos.map((d) => (typeof d === "object" ? d.id : d)).join(", ")
+                : pos.dispositivos,
+              servicio: pos.servicio ? (typeof pos.servicio === "object" ? pos.servicio.id : pos.servicio) : "",
+              sede: pos.sede ? (typeof pos.sede === "object" ? pos.sede.id : pos.sede) : "",
+              // Convertir mergedCells a formato de texto para Excel
+              mergedCellsText: JSON.stringify(pos.mergedCells),
+              // Convertir bordeDetalle a formato de texto para Excel
+              bordeDetalleText: JSON.stringify(pos.bordeDetalle),
             }
-          } catch (error) {
-            console.error("Error al procesar celda combinada:", error, pos)
+          })
+
+          // Crear la hoja de cálculo
+          const worksheet = XLSX.utils.json_to_sheet(exportData)
+
+          // Aplicar estilos a las celdas
+          const range = XLSX.utils.decode_range(worksheet["!ref"])
+
+          for (let R = range.s.r + 1; R <= range.e.r; R++) {
+            for (let C = range.s.c; C <= range.e.c; C++) {
+              const cellAddress = XLSX.utils.encode_cell({ r: R, c: C })
+              const cell = worksheet[cellAddress]
+
+              if (!cell) continue
+
+              const position = exportData[R - 1]
+              if (position) {
+                // Inicializar estilos si no existen
+                if (!cell.s) cell.s = {}
+                if (!cell.s.fill) cell.s.fill = {}
+                if (!cell.s.font) cell.s.font = {}
+
+                // Aplicar color de fondo
+                const colorHex = position.servicio
+                  ? getServiceColor(position.servicio).replace("#", "")
+                  : position.colorOriginal || position.color.replace("#", "")
+
+                cell.s.fill = {
+                  patternType: "solid",
+                  fgColor: { rgb: colorHex },
+                  bgColor: { rgb: colorHex },
+                }
+
+                // Aplicar color de texto
+                cell.s.font.color = { rgb: position.colorFuente.replace("#", "") }
+              }
+            }
           }
+
+          // Procesar celdas combinadas
+          const merges = []
+          positionsArray.forEach((pos) => {
+            if (pos.mergedCells && pos.mergedCells.length > 1) {
+              try {
+                const cells = pos.mergedCells
+                const rows = cells.map((c) => Number(c.row))
+                const cols = cells.map((c) => XLSX.utils.decode_col(c.col))
+
+                const startRow = Math.min(...rows) - 1
+                const endRow = Math.max(...rows) - 1
+                const startCol = Math.min(...cols)
+                const endCol = Math.max(...cols)
+
+                if (startRow >= 0 && startCol >= 0 && endRow >= startRow && endCol >= startCol) {
+                  merges.push({
+                    s: { r: startRow, c: startCol },
+                    e: { r: endRow, c: endCol },
+                  })
+                }
+              } catch (error) {
+                console.error("Error al procesar celda combinada:", error, pos)
+              }
+            }
+          })
+
+          if (merges.length > 0) {
+            worksheet["!merges"] = merges
+          }
+
+          // Crear el libro y añadir la hoja
+          const workbook = XLSX.utils.book_new()
+          XLSX.utils.book_append_sheet(workbook, worksheet, "Posiciones")
+
+          // Generar nombre de archivo con fecha y hora
+          const timestamp = new Date().toISOString().replace(/[:.]/g, "-").substring(0, 19)
+          const fileName = showAllPositions
+            ? `Todas_Posiciones_${timestamp}.xlsx`
+            : `Posiciones_${selectedPiso}_${timestamp}.xlsx`
+
+          // Convertir el libro a un array buffer
+          const wbout = XLSX.write(workbook, { bookType: "xlsx", type: "array" })
+
+          // Crear un Blob con el array buffer
+          const blob = new Blob([wbout], { type: "application/octet-stream" })
+
+          // Crear una URL para el blob
+          const url = URL.createObjectURL(blob)
+
+          // Crear un elemento <a> para descargar el archivo
+          const a = document.createElement("a")
+          a.href = url
+          a.download = fileName
+
+          // Añadir el elemento al DOM, hacer clic en él y luego eliminarlo
+          document.body.appendChild(a)
+          a.click()
+
+          // Limpiar
+          setTimeout(() => {
+            document.body.removeChild(a)
+            URL.revokeObjectURL(url)
+          }, 0)
+
+          showNotification(`Exportación completada: ${positionsArray.length} posiciones exportadas`, "success")
+        } catch (error) {
+          console.error("Error al exportar:", error)
+          showNotification("Error al exportar las posiciones: " + (error.message || "Error desconocido"), "error")
+        } finally {
+          setLoading(false)
+          setConfirmAlert({ ...confirmAlert, show: false })
         }
-      })
-
-      if (merges.length > 0) {
-        worksheet["!merges"] = merges
-      }
-
-      // Crear el libro y añadir la hoja
-      const workbook = XLSX.utils.book_new()
-      XLSX.utils.book_append_sheet(workbook, worksheet, "Posiciones")
-
-      // Generar nombre de archivo con fecha y hora
-      const timestamp = new Date().toISOString().replace(/[:.]/g, "-").substring(0, 19)
-      const fileName = showAllPositions
-        ? `Todas_Posiciones_${timestamp}.xlsx`
-        : `Posiciones_${selectedPiso}_${timestamp}.xlsx`
-
-      // Convertir el libro a un array buffer
-      const wbout = XLSX.write(workbook, { bookType: "xlsx", type: "array" })
-
-      // Crear un Blob con el array buffer
-      const blob = new Blob([wbout], { type: "application/octet-stream" })
-
-      // Crear una URL para el blob
-      const url = URL.createObjectURL(blob)
-
-      // Crear un elemento <a> para descargar el archivo
-      const a = document.createElement("a")
-      a.href = url
-      a.download = fileName
-
-      // Añadir el elemento al DOM, hacer clic en él y luego eliminarlo
-      document.body.appendChild(a)
-      a.click()
-
-      // Limpiar
-      setTimeout(() => {
-        document.body.removeChild(a)
-        URL.revokeObjectURL(url)
-      }, 0)
-
-      showNotification(`Exportación completada: ${positionsArray.length} posiciones exportadas`, "success")
-    } catch (error) {
-      console.error("Error al exportar:", error)
-      showNotification("Error al exportar las posiciones: " + (error.message || "Error desconocido"), "error")
-    } finally {
-      setLoading(false)
-    }
+      },
+      onCancel: () => setConfirmAlert({ ...confirmAlert, show: false }),
+    })
   }
 
   // Función para guardar una posición
@@ -1232,6 +1329,33 @@ function FloorPlan() {
         return
       }
 
+      // Si es una edición, mostrar confirmación
+      if (newPosition.id) {
+        setConfirmAlert({
+          show: true,
+          message: "¿Estás seguro de que deseas guardar los cambios realizados?",
+          onConfirm: async () => {
+            try {
+              await savePositionData()
+            } finally {
+              setConfirmAlert({ ...confirmAlert, show: false })
+            }
+          },
+          onCancel: () => setConfirmAlert({ ...confirmAlert, show: false }),
+        })
+      } else {
+        // Si es una nueva posición, guardar directamente
+        await savePositionData()
+      }
+    } catch (error) {
+      console.error("Error al guardar posición:", error)
+      showNotification("Error al guardar la posición", "error")
+    }
+  }
+
+  // Función auxiliar para guardar los datos de la posición
+  const savePositionData = async () => {
+    try {
       // Convertir explícitamente los tipos de datos
       const fila = Number.parseInt(newPosition.fila, 10)
 
@@ -1333,37 +1457,53 @@ function FloorPlan() {
         return
       }
 
-      const response = await axios.delete(`${API_URL}api/posiciones/${id}/`)
+      setConfirmAlert({
+        show: true,
+        message: "¿Estás seguro de que deseas eliminar esta posición?",
+        onConfirm: async () => {
+          try {
+            setLoading(true)
+            const response = await axios.delete(`${API_URL}api/posiciones/${id}/`)
 
-      if (response.status === 204 || response.status === 200) {
-        showNotification("Posición eliminada correctamente")
+            if (response.status === 204 || response.status === 200) {
+              showNotification("Posición eliminada correctamente")
 
-        // Actualizar el estado local eliminando la posición
-        setPositions((prevPositions) => {
-          const newPositions = { ...prevPositions }
-          delete newPositions[id]
+              // Actualizar el estado local eliminando la posición
+              setPositions((prevPositions) => {
+                const newPositions = { ...prevPositions }
+                delete newPositions[id]
 
-          // Actualizar el mapa de dispositivos asignados
-          updateAssignedDevices(newPositions)
+                // Actualizar el mapa de dispositivos asignados
+                updateAssignedDevices(newPositions)
 
-          return newPositions
-        })
+                return newPositions
+              })
 
-        setIsModalOpen(false)
-      } else {
-        throw new Error(`Error al eliminar: código de estado ${response.status}`)
-      }
+              setIsModalOpen(false)
+            } else {
+              throw new Error(`Error al eliminar: código de estado ${response.status}`)
+            }
+          } catch (error) {
+            console.error("Error al eliminar posición:", error)
+            let errorMessage = "Error al eliminar la posición"
+            if (error.response?.data) {
+              if (typeof error.response.data === "object") {
+                errorMessage += ": " + JSON.stringify(error.response.data)
+              } else {
+                errorMessage += ": " + error.response.data
+              }
+            }
+            showNotification(errorMessage, "error")
+          } finally {
+            setLoading(false)
+            setConfirmAlert({ ...confirmAlert, show: false })
+          }
+        },
+        onCancel: () => setConfirmAlert({ ...confirmAlert, show: false }),
+      })
     } catch (error) {
-      console.error("Error al eliminar posición:", error)
-      let errorMessage = "Error al eliminar la posición"
-      if (error.response?.data) {
-        if (typeof error.response.data === "object") {
-          errorMessage += ": " + JSON.stringify(error.response.data)
-        } else {
-          errorMessage += ": " + error.response.data
-        }
-      }
-      showNotification(errorMessage, "error")
+      console.error("Error al preparar eliminación:", error)
+      showNotification("Error al preparar la eliminación", "error")
     }
   }
 
@@ -1845,11 +1985,23 @@ function FloorPlan() {
                       label: (context) => {
                         const label = context.label || ""
                         const value = context.raw || 0
-                        const percentage = Math.round(
-                          (value / Object.values(serviceGroups).reduce((sum, count) => sum + count, 0)) * 100,
-                        )
+                        const total = Object.values(serviceGroups).reduce((sum, count) => sum + count, 0)
+                        const percentage = Math.round((value / total) * 100)
                         return `${label}: ${value} (${percentage}%)`
                       },
+                    },
+                  },
+                  datalabels: {
+                    display: true,
+                    color: "#fff",
+                    font: {
+                      weight: "bold",
+                      size: 12,
+                    },
+                    formatter: (value, ctx) => {
+                      const total = Object.values(serviceGroups).reduce((sum, count) => sum + count, 0)
+                      const percentage = Math.round((value / total) * 100)
+                      return percentage > 5 ? `${percentage}%` : ""
                     },
                   },
                 },
@@ -2223,6 +2375,27 @@ function FloorPlan() {
     )
   }
 
+  // Componente de alerta de confirmación
+  const ConfirmAlert = ({ message, onConfirm, onCancel }) => {
+    return (
+      <div className="alert-overlay">
+        <div className="modal-container confirm-container">
+          <div className="confirm-modal">
+            <p>{message}</p>
+            <div className="confirm-buttons">
+              <button className="confirm-button cancel" onClick={onCancel}>
+                Cancelar
+              </button>
+              <button className="alert-button accept" onClick={onConfirm}>
+                Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="dashboard-container">
       <div className="controls-container">
@@ -2300,16 +2473,18 @@ function FloorPlan() {
               <FaChartPie /> Estadísticas
             </button>
 
-            {/* Checkbox para mostrar todas las posiciones */}
-            <label style={{ display: "flex", alignItems: "center" }}>
-              <input
-                type="checkbox"
-                checked={showAllPositions}
-                onChange={() => setShowAllPositions(!showAllPositions)}
-                style={{ marginRight: "5px" }}
-              />
-              Mostrar todas las posiciones
-            </label>
+            {/* Checkbox para mostrar todas las posiciones - solo visible en modo estadísticas */}
+            {viewMode === "estadisticas" && (
+              <label style={{ display: "flex", alignItems: "center" }}>
+                <input
+                  type="checkbox"
+                  checked={showAllPositions}
+                  onChange={() => setShowAllPositions(!showAllPositions)}
+                  style={{ marginRight: "5px" }}
+                />
+                Mostrar todas las posiciones
+              </label>
+            )}
           </div>
           {/* Selector de sede - Obligatorio seleccionar una */}
           <div className="action-buttonn">
@@ -2462,6 +2637,15 @@ function FloorPlan() {
             <p>{notification.message}</p>
           </div>
         </div>
+      )}
+
+      {/* Modal de confirmación */}
+      {confirmAlert.show && (
+        <ConfirmAlert
+          message={confirmAlert.message}
+          onConfirm={confirmAlert.onConfirm}
+          onCancel={confirmAlert.onCancel}
+        />
       )}
 
       {/* Modal para crear/editar posición */}

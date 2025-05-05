@@ -319,8 +319,14 @@ class PosicionSerializer(serializers.ModelSerializer):
             row = cell.get('row')
             col = cell.get('col')
             
+            # Obtener los valores de sede y piso
+            piso = data.get('piso', instance.piso if instance else None)
+            sede = data.get('sede', instance.sede if instance else None)
+            
+            # Filtrar por piso, sede y celda combinada
             query = Posicion.objects.filter(
-                piso=data.get('piso', instance.piso if instance else None),
+                piso=piso,
+                sede=sede,
                 mergedCells__contains=[{'row': row, 'col': col}]
             )
             
@@ -328,7 +334,7 @@ class PosicionSerializer(serializers.ModelSerializer):
                 query = query.exclude(id=instance.id)
             
             if query.exists():
-                raise serializers.ValidationError(f"La celda {row}-{col} ya está ocupada.")
+                raise serializers.ValidationError(f"La celda {row}-{col} ya está ocupada en el piso {piso} de la sede seleccionada.")
         
         # Validación de fila y columna
         if data.get("fila") is not None and data.get("fila") < 1:
@@ -569,6 +575,7 @@ class PosicionSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({
                 'non_field_errors': f'Error al actualizar posición: {str(e)}'
             })
+
 
 class HistorialSerializer(serializers.ModelSerializer):
     dispositivo = DispositivoSerializer(read_only=True)
