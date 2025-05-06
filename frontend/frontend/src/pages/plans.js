@@ -1,4 +1,3 @@
-/* eslint-disable eqeqeq */
 "use client"
 
 import { useState, useEffect, useRef } from "react"
@@ -1706,8 +1705,8 @@ function FloorPlan() {
   const getServiceStatistics = () => {
     // Obtener todas las posiciones para la vista actual (filtradas por piso o todas)
     const positionsToAnalyze = showAllPositions
-      ? Object.values(positions)
-      : Object.values(positions).filter((pos) => pos.piso === selectedPiso)
+      ? Object.values(positions).filter((pos) => pos.sede == selectedSede)
+      : Object.values(positions).filter((pos) => pos.piso === selectedPiso && pos.sede == selectedSede)
 
     // Agrupar posiciones por servicio
     const serviceGroups = {}
@@ -1882,6 +1881,7 @@ function FloorPlan() {
       minWidth: "300px",
       height: "300px",
       position: "relative",
+      className: "chart-container",
     }
 
     const summaryContainerStyle = {
@@ -1971,12 +1971,55 @@ function FloorPlan() {
                 plugins: {
                   legend: {
                     position: "right",
+                    onHover: (event, legendItem, legend) => {
+                      // Cambiar el cursor a pointer al pasar sobre los elementos de la leyenda
+                      event.native.target.style.cursor = "pointer"
+                    },
+                    onLeave: (event, legendItem, legend) => {
+                      // Restaurar el cursor al salir
+                      event.native.target.style.cursor = "default"
+                    },
                     labels: {
                       color: "#e9e9e9",
                       usePointStyle: true,
                       padding: 20,
                       font: {
                         size: 12,
+                      },
+                      generateLabels: (chart) => {
+                        // Personalizar las etiquetas para incluir porcentajes
+                        const data = chart.data
+                        if (data.labels.length && data.datasets.length) {
+                          const dataset = data.datasets[0]
+                          const total = dataset.data.reduce((sum, value) => sum + value, 0)
+
+                          return data.labels.map((label, i) => {
+                            const value = dataset.data[i]
+                            const percentage = Math.round((value / total) * 100)
+                            const isHidden = isNaN(dataset.data[i]) || chart.getDatasetMeta(0).data[i].hidden
+
+                            return {
+                              text: `${label} (${percentage}%)`,
+                              fillStyle: dataset.backgroundColor[i],
+                              hidden: isHidden,
+                              // Aplicar estilo diferente para elementos ocultos
+                              strokeStyle: isHidden ? "rgba(255, 255, 255, 0.5)" : dataset.borderColor[i],
+                              // Aumentar el ancho del borde para elementos ocultos
+                              lineWidth: isHidden ? 2 : dataset.borderWidth,
+                              // Usar un estilo de punto diferente para elementos ocultos
+                              pointStyle: isHidden ? "rectRounded" : "circle",
+                              // Añadir opacidad para elementos ocultos
+                              fillStyle: isHidden ? `${dataset.backgroundColor[i]}80` : dataset.backgroundColor[i],
+                              lineCap: dataset.borderCapStyle,
+                              lineDash: dataset.borderDash,
+                              lineDashOffset: dataset.borderDashOffset,
+                              lineJoin: dataset.borderJoinStyle,
+                              rotation: dataset.rotation,
+                              index: i,
+                            }
+                          })
+                        }
+                        return []
                       },
                     },
                   },
@@ -3138,7 +3181,6 @@ function FloorPlan() {
         </div>
       )}
     </div>
-  )
-}
+  )}
 
 export default FloorPlan
