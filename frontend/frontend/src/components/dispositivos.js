@@ -16,7 +16,9 @@ import {
   FaSearch,
   FaChevronLeft,
   FaChevronRight,
+  FaFileExcel,
 } from "react-icons/fa"
+import * as XLSX from "xlsx"
 import "../styles/Devices.css"
 
 // Componente principal
@@ -36,6 +38,125 @@ const Dispositivos = () => {
     type: "error",
   })
 
+  // Definición de opciones según el modelo Django
+  const tiposDispositivos = [
+    { value: 'COMPUTADOR', label: 'Computador' },
+    { value: 'DESKTOP', label: 'Desktop' },
+    { value: 'MONITOR', label: 'Monitor' },
+    { value: 'TABLET', label: 'Tablet' },
+    { value: 'MOVIL', label: 'Celular' },
+    { value: 'HP_PRODISPLAY_P201', label: 'HP ProDisplay P201' },
+    { value: 'PORTATIL', label: 'Portátil' },
+    { value: 'TODO_EN_UNO', label: 'Todo en uno' },
+  ]
+
+  const fabricantes = [
+    { value: 'DELL', label: 'Dell' },
+    { value: 'HP', label: 'HP' },
+    { value: 'LENOVO', label: 'Lenovo' },
+    { value: 'APPLE', label: 'Apple' },
+    { value: 'SAMSUNG', label: 'Samsung' },
+  ]
+
+  const estadosDispositivo = [
+    { value: 'BUENO', label: 'Bueno' },
+    { value: 'BODEGA_CN', label: 'Bodega CN' },
+    { value: 'BODEGA', label: 'Bodega' },
+    { value: 'MALA', label: 'Mala' },
+    { value: 'MALO', label: 'Malo' },
+    { value: 'PENDIENTE_BAJA', label: 'Pendiente/Baja' },
+    { value: 'PERDIDO_ROBADO', label: 'Perdido/Robado' },
+    { value: 'REPARAR', label: 'Reparar' },
+    { value: 'REPARAR_BAJA', label: 'Reparar/Baja' },
+    { value: 'SEDE', label: 'Sede' },
+    { value: 'STOCK', label: 'Stock' },
+  ]
+
+  const razonesSociales = [
+    { value: 'ECCC', label: 'ECCC' },
+    { value: 'ECOL', label: 'ECOL' },
+    { value: 'CNC', label: 'CNC' },
+    { value: 'BODEGA_CN', label: 'Bodega CN' },
+    { value: 'COMPRADO', label: 'Comprado' },
+    { value: 'PROPIO', label: 'Propio' },
+  ]
+
+  const capacidadesDiscoDuro = [
+    { value: '120GB', label: '120 GB' },
+    { value: '250GB', label: '250 GB' },
+    { value: '500GB', label: '500 GB' },
+    { value: '1TB', label: '1 TB' },
+    { value: '2TB', label: '2 TB' },
+    { value: '4TB', label: '4 TB' },
+    { value: '8TB', label: '8 TB' },
+  ]
+
+  const capacidadesMemoriaRam = [
+    { value: '2GB', label: '2 GB' },
+    { value: '4GB', label: '4 GB' },
+    { value: '8GB', label: '8 GB' },
+    { value: '16GB', label: '16 GB' },
+    { value: '32GB', label: '32 GB' },
+    { value: '64GB', label: '64 GB' },
+  ]
+  
+  const sistemasOperativos = [
+    { value: 'NA', label: 'No Aplica' },
+    { value: 'SERVER', label: 'Server' },
+    { value: 'WIN10', label: 'Windows 10' },
+    { value: 'WIN11', label: 'Windows 11' },
+    { value: 'WIN7', label: 'Windows 7' },
+    { value: 'VACIO', label: 'Sin Sistema Operativo' },
+    { value: 'MACOS', label: 'MacOS' },
+  ]
+
+  const procesadores = [
+    { value: 'AMD_A12', label: 'AMD A12' },
+    { value: 'AMD_A8_5500B', label: 'AMD A8-5500B APU' },
+    { value: 'AMD_RYZEN', label: 'AMD RYZEN' },
+    { value: 'AMD_RYZEN_3_2200GE', label: 'AMD Ryzen 3 2200GE' },
+    { value: 'I3_6200U', label: 'Intel Core i3 6200U' },
+    { value: 'I5_4430S', label: 'Intel Core i5 4430s' },
+    { value: 'I5_4460', label: 'Intel Core i5 4460' },
+    { value: 'I5_4590', label: 'Intel Core i5 4590' },
+    { value: 'I5_4600', label: 'Intel Core i5 4600' },
+    { value: 'I5_4670', label: 'Intel Core i5 4670' },
+    { value: 'I5_4750', label: 'Intel Core i5 4750' },
+    { value: 'I5_6500', label: 'Intel Core i5 6500' },
+    { value: 'I5_6500T', label: 'Intel Core i5 6500T' },
+    { value: 'I5_7500', label: 'Intel Core i5 7500' },
+    { value: 'I5_8400T', label: 'Intel Core i5 8400T' },
+    { value: 'I5_8500', label: 'Intel Core i5 8500' },
+    { value: 'I5_10TH', label: 'Intel Core i5 10th Gen' },
+    { value: 'I5_11TH', label: 'Intel Core i5 11th Gen' },
+    { value: 'I5_12TH', label: 'Intel Core i5 12th Gen' },
+    { value: 'I7_8TH', label: 'Intel Core i7 8th Gen' },
+    { value: 'I7_12TH', label: 'Intel Core i7 12th Gen' },
+    { value: 'I7_13TH', label: 'Intel Core i7 13th Gen' },
+    { value: 'I7_7TH', label: 'Intel Core i7 7th Gen' },
+    { value: 'I7_8565U', label: 'Intel Core i7 8565U @ 1.80GHz' },
+  ]
+
+  const ubicaciones = [
+    { value: 'CASA', label: 'Casa' },
+    { value: 'CLIENTE', label: 'Cliente' },
+    { value: 'SEDE', label: 'Sede' },
+    { value: 'OTRO', label: 'Otro' },
+  ]
+  
+  const estadosPropiedad = [
+    { value: 'PROPIO', label: 'Propio' },
+    { value: 'ARRENDADO', label: 'Arrendado' },
+    { value: 'DONADO', label: 'Donado' },
+    { value: 'OTRO', label: 'Otro' },
+  ]
+  
+  const estadosUso = [
+    { value: 'DISPONIBLE', label: 'Disponible' },
+    { value: 'EN_USO', label: 'En uso' },
+    { value: 'INHABILITADO', label: 'Inhabilitado' },
+  ]
+
   // Estado para alertas de confirmación
   const [confirmAlert, setConfirmAlert] = useState({
     show: false,
@@ -53,22 +174,22 @@ const Dispositivos = () => {
   // Estado inicial de un dispositivo
   function initialDeviceState() {
     return {
-      tipo: "COMPUTADOR",
-      marca: "DELL",
+      tipo: "",
+      marca: "",
       modelo: "",
       serial: "",
-      estado: "BUENO",
-      estado_uso: "DISPONIBLE",
-      capacidad_memoria_ram: "8GB",
-      capacidad_disco_duro: "500GB",
-      sistema_operativo: "WIN10",
-      procesador: "I5_8500",
-      ubicacion: "SEDE",
-      razon_social: "ECCC",
+      estado: "",
+      estado_uso: "",
+      capacidad_memoria_ram: "",
+      capacidad_disco_duro: "",
+      sistema_operativo: "",
+      procesador: "",
+      ubicacion: "",
+      razon_social: "",
       regimen: "",
       placa_cu: "",
       piso: "",
-      estado_propiedad: "PROPIO",
+      estado_propiedad: "",
       proveedor: "",
       posicion: null,
       sede: null,
@@ -81,7 +202,7 @@ const Dispositivos = () => {
   const fetchDispositivos = async () => {
     try {
       const response = await axios.get("http://127.0.0.1:8000/api/dispositivos/")
-      
+
       let data = []
       if (Array.isArray(response.data)) {
         data = response.data
@@ -93,7 +214,7 @@ const Dispositivos = () => {
         console.error("Formato inesperado en dispositivos:", response.data)
         data = []
       }
-  
+
       setDispositivos(data)
       applyFilters(data)
     } catch (error) {
@@ -102,7 +223,7 @@ const Dispositivos = () => {
       setFilteredDispositivos([])
     }
   }
-  
+
   // Obtener las posiciones
   const fetchPosiciones = async () => {
     try {
@@ -200,25 +321,25 @@ const Dispositivos = () => {
   // Crear un nuevo dispositivo
   const addDevice = async () => {
     if (!validateDevice(newDevice)) return
-    
+
     try {
       // Limpiar datos antes de enviar
       const deviceToSend = { ...newDevice }
-      
+
       // Convertir IDs a números o eliminarlos si son null/undefined
       deviceToSend.posicion = deviceToSend.posicion ? Number(deviceToSend.posicion) : null
       deviceToSend.sede = deviceToSend.sede ? Number(deviceToSend.sede) : null
       deviceToSend.usuario_asignado = deviceToSend.usuario_asignado ? Number(deviceToSend.usuario_asignado) : null
-      
+
       // Eliminar campos vacíos
-      Object.keys(deviceToSend).forEach(key => {
+      Object.keys(deviceToSend).forEach((key) => {
         if (deviceToSend[key] === "" || deviceToSend[key] === null) {
           delete deviceToSend[key]
         }
       })
-  
+
       const response = await axios.post("http://127.0.0.1:8000/api/dispositivos/", deviceToSend)
-      
+
       if (response.status === 201) {
         fetchDispositivos()
         setShowForm(false)
@@ -232,12 +353,12 @@ const Dispositivos = () => {
     } catch (error) {
       console.error("Error al agregar el dispositivo:", error)
       let errorMessage = "Hubo un error al agregar el dispositivo."
-      
+
       if (error.response?.data) {
         // Mostrar mensajes específicos del backend si existen
         errorMessage = Object.values(error.response.data).flat().join(", ")
       }
-      
+
       setAlert({
         show: true,
         message: errorMessage,
@@ -249,31 +370,31 @@ const Dispositivos = () => {
   // Actualizar un dispositivo
   const updateDevice = async () => {
     if (!validateDevice(selectedDevice)) return
-  
+
     try {
       // Clonar el dispositivo y limpiar los datos incorrectos
       const cleanDeviceData = { ...selectedDevice }
-  
+
       // Limpiar campos de relaciones si están vacíos
       if (!cleanDeviceData.posicion) {
         delete cleanDeviceData.posicion
       } else {
         cleanDeviceData.posicion = Number.parseInt(cleanDeviceData.posicion)
       }
-  
+
       if (!cleanDeviceData.sede) {
         delete cleanDeviceData.sede
       } else {
         cleanDeviceData.sede = Number.parseInt(cleanDeviceData.sede)
       }
-  
+
       // Eliminar usuario_asignado si no es necesario en el backend
       if (!cleanDeviceData.usuario_asignado) {
         delete cleanDeviceData.usuario_asignado
       } else {
         cleanDeviceData.usuario_asignado = Number.parseInt(cleanDeviceData.usuario_asignado)
       }
-  
+
       await axios.put(`http://127.0.0.1:8000/api/dispositivos/${selectedDevice.id}/`, cleanDeviceData)
       fetchDispositivos()
       setShowDetailModal(false)
@@ -296,7 +417,7 @@ const Dispositivos = () => {
   const deleteDevice = async (deviceId) => {
     try {
       const response = await axios.delete(`http://127.0.0.1:8000/api/dispositivos/${deviceId}/`)
-      
+
       if (response.status === 204) {
         fetchDispositivos()
         setAlert({
@@ -307,12 +428,12 @@ const Dispositivos = () => {
       }
     } catch (error) {
       console.error("Error al eliminar el dispositivo:", error)
-      
+
       let errorMessage = "Hubo un error al eliminar el dispositivo."
       if (error.response?.data?.detail) {
         errorMessage = error.response.data.detail
       }
-      
+
       setAlert({
         show: true,
         message: errorMessage,
@@ -368,6 +489,69 @@ const Dispositivos = () => {
         return <FaDesktop />
       default:
         return <FaServer />
+    }
+  }
+
+  // Función para exportar a Excel
+  const exportToExcel = () => {
+    try {
+      // Preparar los datos para exportar
+      const dataToExport = filteredDispositivos.map((device) => {
+        // Buscar nombres de relaciones
+        const posicionNombre = posiciones.find((p) => p.id === device.posicion)?.nombre || ""
+        const sedeNombre = sedes.find((s) => s.id === device.sede)?.nombre || ""
+        const usuarioNombre = usuarios.find((u) => u.id === device.usuario_asignado)
+          ? `${usuarios.find((u) => u.id === device.usuario_asignado).nombre} ${usuarios.find((u) => u.id === device.usuario_asignado).apellido}`
+          : ""
+
+        return {
+          Tipo: device.tipo || "",
+          Marca: device.marca || "",
+          Modelo: device.modelo || "",
+          Serial: device.serial || "",
+          Estado: device.estado || "",
+          "Estado de Uso": device.estado_uso || "",
+          "Sistema Operativo": device.sistema_operativo || "",
+          Procesador: device.procesador || "",
+          "Memoria RAM": device.capacidad_memoria_ram || "",
+          "Disco Duro": device.capacidad_disco_duro || "",
+          "Placa CU": device.placa_cu || "",
+          Ubicación: device.ubicacion || "",
+          "Razón Social": device.razon_social || "",
+          Régimen: device.regimen || "",
+          Piso: device.piso || "",
+          "Estado Propiedad": device.estado_propiedad || "",
+          Proveedor: device.proveedor || "",
+          Posición: posicionNombre,
+          Sede: sedeNombre,
+          "Usuario Asignado": usuarioNombre,
+          Observaciones: device.observaciones || "",
+        }
+      })
+
+      // Crear una hoja de trabajo
+      const worksheet = XLSX.utils.json_to_sheet(dataToExport)
+
+      // Crear un libro de trabajo
+      const workbook = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Dispositivos")
+
+      // Generar el archivo Excel
+      const date = new Date().toISOString().slice(0, 10)
+      XLSX.writeFile(workbook, `Reporte_Dispositivos_${date}.xlsx`)
+
+      setAlert({
+        show: true,
+        message: "Reporte Excel generado exitosamente.",
+        type: "success",
+      })
+    } catch (error) {
+      console.error("Error al exportar a Excel:", error)
+      setAlert({
+        show: true,
+        message: "Error al generar el reporte Excel.",
+        type: "error",
+      })
     }
   }
 
@@ -448,9 +632,16 @@ const Dispositivos = () => {
       <div className="user-card">
         <div className="card-header">
           <h2>Gestión de Dispositivos</h2>
-          <button className="add-user-btn" onClick={() => setShowForm(true)}>
-            <FaPlus />
-          </button>
+          <div className="header-actions">
+            <div className="export-buttons">
+              <button className="export-btn excel" onClick={exportToExcel} title="Exportar a Excel">
+                <FaFileExcel /> Excel
+              </button>
+            </div>
+            <button className="add-user-btn" onClick={() => setShowForm(true)}>
+              <FaPlus />
+            </button>
+          </div>
         </div>
 
         {/* Mensajes de alerta */}
@@ -531,6 +722,17 @@ const Dispositivos = () => {
                   posiciones={posiciones}
                   sedes={sedes}
                   usuarios={usuarios}
+                  tiposDispositivos={tiposDispositivos}
+                  fabricantes={fabricantes}
+                  estadosDispositivo={estadosDispositivo}
+                  estadosUso={estadosUso}
+                  sistemasOperativos={sistemasOperativos}
+                  procesadores={procesadores}
+                  ubicaciones={ubicaciones}
+                  razonesSociales={razonesSociales}
+                  estadosPropiedad={estadosPropiedad}
+                  capacidadesMemoriaRam={capacidadesMemoriaRam}
+                  capacidadesDiscoDuro={capacidadesDiscoDuro}
                 />
               </div>
             </div>
@@ -553,6 +755,17 @@ const Dispositivos = () => {
                   posiciones={posiciones}
                   sedes={sedes}
                   usuarios={usuarios}
+                  tiposDispositivos={tiposDispositivos}
+                  fabricantes={fabricantes}
+                  estadosDispositivo={estadosDispositivo}
+                  estadosUso={estadosUso}
+                  sistemasOperativos={sistemasOperativos}
+                  procesadores={procesadores}
+                  ubicaciones={ubicaciones}
+                  razonesSociales={razonesSociales}
+                  estadosPropiedad={estadosPropiedad}
+                  capacidadesMemoriaRam={capacidadesMemoriaRam}
+                  capacidadesDiscoDuro={capacidadesDiscoDuro}
                 />
               </div>
             </div>
@@ -582,8 +795,8 @@ const DeviceList = ({ dispositivos, setSelectedDevice, setShowDetailModal, delet
             </div>
             <div className="user-access">Serial: {device.serial}</div>
             <div className="user-details">
-              <span>Estado: {device.estado}  </span>
-              {device.placa_cu && <span>  Placa: {device.placa_cu}</span>}
+              <span>Estado: {device.estado} </span>
+              {device.placa_cu && <span> Placa: {device.placa_cu}</span>}
             </div>
           </div>
           <div className="user-actions">
@@ -609,127 +822,26 @@ const DeviceList = ({ dispositivos, setSelectedDevice, setShowDetailModal, delet
 )
 
 // Componente para el formulario de dispositivos
-const DeviceForm = ({ device, setDevice, onSubmit, posiciones, sedes, usuarios }) => {
+const DeviceForm = ({
+  device,
+  setDevice,
+  onSubmit,
+  posiciones,
+  sedes,
+  usuarios,
+  tiposDispositivos,
+  fabricantes,
+  estadosDispositivo,
+  estadosUso,
+  sistemasOperativos,
+  procesadores,
+  ubicaciones,
+  razonesSociales,
+  estadosPropiedad,
+  capacidadesMemoriaRam,
+  capacidadesDiscoDuro,
+}) => {
   if (!device) return null
-
-  // Opciones para los selects según el modelo Django
-  const tiposDispositivos = [
-    { value: "COMPUTADOR", label: "Computador" },
-    { value: "DESKTOP", label: "Desktop" },
-    { value: "MONITOR", label: "Monitor" },
-    { value: "TABLET", label: "Tablet" },
-    { value: "MOVIL", label: "Celular" },
-    { value: "HP_PRODISPLAY_P201", label: "HP ProDisplay P201" },
-    { value: "PORTATIL", label: "Portátil" },
-    { value: "TODO_EN_UNO", label: "Todo en uno" },
-  ]
-
-  const fabricantes = [
-    { value: "DELL", label: "Dell" },
-    { value: "HP", label: "HP" },
-    { value: "LENOVO", label: "Lenovo" },
-    { value: "APPLE", label: "Apple" },
-    { value: "SAMSUNG", label: "Samsung" },
-  ]
-
-  const estadosDispositivo = [
-    { value: "BUENO", label: "Bueno" },
-    { value: "BODEGA_CN", label: "Bodega CN" },
-    { value: "BODEGA", label: "Bodega" },
-    { value: "MALA", label: "Mala" },
-    { value: "MALO", label: "Malo" },
-    { value: "PENDIENTE_BAJA", label: "Pendiente/Baja" },
-    { value: "PERDIDO_ROBADO", label: "Perdido/Robado" },
-    { value: "REPARAR", label: "Reparar" },
-    { value: "REPARAR_BAJA", label: "Reparar/Baja" },
-    { value: "SEDE", label: "Sede" },
-    { value: "STOCK", label: "Stock" },
-  ]
-
-  const estadosUso = [
-    { value: "DISPONIBLE", label: "Disponible" },
-    { value: "EN_USO", label: "En uso" },
-    { value: "INHABILITADO", label: "Inhabilitado" },
-  ]
-
-  const razonesSociales = [
-    { value: "ECCC", label: "ECCC" },
-    { value: "ECOL", label: "ECOL" },
-    { value: "CNC", label: "CNC" },
-    { value: "BODEGA_CN", label: "Bodega CN" },
-    { value: "COMPRADO", label: "Comprado" },
-    { value: "PROPIO", label: "Propio" },
-  ]
-
-  const sistemasOperativos = [
-    { value: "NA", label: "No Aplica" },
-    { value: "SERVER", label: "Server" },
-    { value: "WIN10", label: "Windows 10" },
-    { value: "WIN11", label: "Windows 11" },
-    { value: "WIN7", label: "Windows 7" },
-    { value: "VACIO", label: "Sin Sistema Operativo" },
-    { value: "MACOS", label: "MacOS" },
-  ]
-
-  const procesadores = [
-    { value: "AMD_A12", label: "AMD A12" },
-    { value: "AMD_A8_5500B", label: "AMD A8-5500B APU" },
-    { value: "AMD_RYZEN", label: "AMD RYZEN" },
-    { value: "AMD_RYZEN_3_2200GE", label: "AMD Ryzen 3 2200GE" },
-    { value: "I3_6200U", label: "Intel Core i3 6200U" },
-    { value: "I5_4430S", label: "Intel Core i5 4430s" },
-    { value: "I5_4460", label: "Intel Core i5 4460" },
-    { value: "I5_4590", label: "Intel Core i5 4590" },
-    { value: "I5_4600", label: "Intel Core i5 4600" },
-    { value: "I5_4670", label: "Intel Core i5 4670" },
-    { value: "I5_4750", label: "Intel Core i5 4750" },
-    { value: "I5_6500", label: "Intel Core i5 6500" },
-    { value: "I5_6500T", label: "Intel Core i5 6500T" },
-    { value: "I5_7500", label: "Intel Core i5 7500" },
-    { value: "I5_8400T", label: "Intel Core i5 8400T" },
-    { value: "I5_8500", label: "Intel Core i5 8500" },
-    { value: "I5_10TH", label: "Intel Core i5 10th Gen" },
-    { value: "I5_11TH", label: "Intel Core i5 11th Gen" },
-    { value: "I5_12TH", label: "Intel Core i5 12th Gen" },
-    { value: "I7_8TH", label: "Intel Core i7 8th Gen" },
-    { value: "I7_12TH", label: "Intel Core i7 12th Gen" },
-    { value: "I7_13TH", label: "Intel Core i7 13th Gen" },
-    { value: "I7_7TH", label: "Intel Core i7 7th Gen" },
-    { value: "I7_8565U", label: "Intel Core i7 8565U @ 1.80GHz" },
-  ]
-
-  const ubicaciones = [
-    { value: "CASA", label: "Casa" },
-    { value: "CLIENTE", label: "Cliente" },
-    { value: "SEDE", label: "Sede" },
-    { value: "OTRO", label: "Otro" },
-  ]
-
-  const estadosPropiedad = [
-    { value: "PROPIO", label: "Propio" },
-    { value: "ARRENDADO", label: "Arrendado" },
-    { value: "DONADO", label: "Donado" },
-    { value: "OTRO", label: "Otro" },
-  ]
-
-  const capacidadesDiscoDuro = [
-    { value: "120GB", label: "120 GB" },
-    { value: "250GB", label: "250 GB" },
-    { value: "500GB", label: "500 GB" },
-    { value: "1TB", label: "1 TB" },
-    { value: "2TB", label: "2 TB" },
-    { value: "4TB", label: "4 TB" },
-    { value: "8TB", label: "8 TB" },
-  ]
-
-  const capacidadesMemoriaRam = [
-    { value: "2GB", label: "2 GB" },
-    { value: "4GB", label: "4 GB" },
-    { value: "8GB", label: "8 GB" },
-    { value: "16GB", label: "16 GB" },
-    { value: "32GB", label: "32 GB" },
-    { value: "64GB", label: "64 GB" },
-  ]
 
   return (
     <div className="device-form">
@@ -766,7 +878,7 @@ const DeviceForm = ({ device, setDevice, onSubmit, posiciones, sedes, usuarios }
             posiciones.map((pos) => ({
               value: pos.id,
               label: pos.nombre,
-            }))
+            })),
           )}
           {renderSelect(
             "Sede",
@@ -776,7 +888,7 @@ const DeviceForm = ({ device, setDevice, onSubmit, posiciones, sedes, usuarios }
             sedes.map((sede) => ({
               value: sede.id,
               label: sede.nombre,
-            }))
+            })),
           )}
           {renderSelect(
             "Usuario Asignado",
@@ -786,7 +898,7 @@ const DeviceForm = ({ device, setDevice, onSubmit, posiciones, sedes, usuarios }
             usuarios.map((user) => ({
               value: user.id,
               label: `${user.nombre} ${user.apellido}`,
-            }))
+            })),
           )}
           <div className="input-group">
             <label>Observaciones</label>
@@ -816,7 +928,7 @@ const renderInput = (label, field, device, setDevice) => (
       value={device[field] || ""}
       onChange={(e) => setDevice({ ...device, [field]: e.target.value })}
       placeholder={label}
-      required={label.includes('*')}
+      required={label.includes("*")}
     />
   </div>
 )
@@ -825,10 +937,10 @@ const renderInput = (label, field, device, setDevice) => (
 const renderSelect = (label, field, device, setDevice, options) => (
   <div className="input-group">
     <label>{label}</label>
-    <select 
-      value={device[field] || ""} 
+    <select
+      value={device[field] || ""}
       onChange={(e) => setDevice({ ...device, [field]: e.target.value || null })}
-      required={label.includes('*')}
+      required={label.includes("*")}
     >
       <option value="">Seleccione una opción</option>
       {options.map((opt) => (
