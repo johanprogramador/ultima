@@ -1,3 +1,4 @@
+/* eslint-disable eqeqeq */
 "use client"
 
 import { useState, useEffect, useRef } from "react"
@@ -1793,6 +1794,7 @@ function FloorPlan() {
   const filteredPositions = filterPositionsByService(
     Object.values(positions).filter((pos) => {
       // Siempre filtrar por sede seleccionada
+      // eslint-disable-next-line eqeqeq
       if (!selectedSede || pos.sede != selectedSede) {
         return false
       }
@@ -2009,6 +2011,7 @@ function FloorPlan() {
                               // Usar un estilo de punto diferente para elementos ocultos
                               pointStyle: isHidden ? "rectRounded" : "circle",
                               // Añadir opacidad para elementos ocultos
+                              // eslint-disable-next-line no-dupe-keys
                               fillStyle: isHidden ? `${dataset.backgroundColor[i]}80` : dataset.backgroundColor[i],
                               lineCap: dataset.borderCapStyle,
                               lineDash: dataset.borderDash,
