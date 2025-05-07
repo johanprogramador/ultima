@@ -1,60 +1,18 @@
-    import { useState, useEffect, useCallback } from "react"
-    import { useAuth } from "../components/auth"
-    import { useNavigate } from "react-router-dom"
-    import {
-    Table,
-    TableBody,
-    TableCell,
-    TableContainer,
-    TableHead,
-    TableRow,
-    Paper,
-    Chip,
-    MenuItem,
-    Select,
-    FormControl,
-    InputLabel,
-    Button,
-    Grid,
-    Typography,
-    Box,
-    Pagination,
-    IconButton,
-    Tooltip,
-    Dialog,
-    DialogTitle,
-    DialogContent,
-    DialogActions,
-    CircularProgress,
-    Alert,
-    Snackbar,
-    } from "@mui/material"
-    import { FilterList, Clear, Visibility, ArrowBack, Refresh } from "@mui/icons-material"
-    import axios from "axios"
-    import dayjs from "dayjs"
-    import { DatePicker } from "@mui/x-date-pickers/DatePicker"
-    import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider"
-    import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs"
-    import utc from "dayjs/plugin/utc"
-    import timezone from "dayjs/plugin/timezone"
-    import customParseFormat from "dayjs/plugin/customParseFormat"
+/* eslint-disable react-hooks/exhaustive-deps */
+/* eslint-disable no-unused-vars */
+    "use client"
 
-    // Configurar plugins de dayjs
-    dayjs.extend(utc)
-    dayjs.extend(timezone)
-    dayjs.extend(customParseFormat)
-
-    // Configuración de axios
-    const api = axios.create({
-    baseURL: process.env.REACT_APP_API_URL || "http://localhost:8000/api",
-    timeout: 10000,
-    })
+    import { useState, useEffect } from "react"
+    import "../styles/movimientos.css"
 
     const Movimientos = () => {
-    const { token, sedeId } = useAuth()
+    // Estados
     const [movimientos, setMovimientos] = useState([])
-    const [loading, setLoading] = useState(true)
+    const [loading, setLoading] = useState(false)
     const [error, setError] = useState(null)
+    const [openDialog, setOpenDialog] = useState(false)
+    const [openDetailsDialog, setOpenDetailsDialog] = useState(false)
+    const [selectedItem, setSelectedItem] = useState(null)
     const [snackbar, setSnackbar] = useState({
         open: false,
         message: "",
@@ -66,553 +24,644 @@
         totalItems: 0,
     })
     const [filters, setFilters] = useState({
-        ubicacion_origen: "",
-        ubicacion_destino: "",
-        fecha_inicio: null,
-        fecha_fin: null,
+        sede: "",
+        posicion: "",
+        fecha_inicio: "",
+        fecha_fin: "",
         dispositivo: "",
-        encargado: "",
-        search: "",
     })
-    const [filterOptions, setFilterOptions] = useState({
-        ubicaciones: {},
-        dispositivos: [],
-        usuarios: [],
-    })
-    const [selectedItem, setSelectedItem] = useState(null)
-    const [openDialog, setOpenDialog] = useState(false)
-    const navigate = useNavigate()
 
-    const formatDateUTC = useCallback((dateString) => {
-        if (!dateString) return "No registrado"
-        try {
-        const date = dayjs(dateString)
-        return date.isValid() ? date.format("DD/MM/YYYY HH:mm:ss") : "Fecha inválida"
-        } catch (e) {
-        console.error("Error formateando fecha:", e)
-        return "Formato inválido"
-        }
+    // Estados para el modal de creación
+    const [sedeSeleccionada, setSedeSeleccionada] = useState("")
+    const [posicionActual, setPosicionActual] = useState("")
+    const [posicionNueva, setPosicionNueva] = useState("")
+    const [dispositivoSeleccionado, setDispositivoSeleccionado] = useState("")
+    const [searchPosicion, setSearchPosicion] = useState("")
+    const [searchDispositivo, setSearchDispositivo] = useState("")
+    const [detalle, setDetalle] = useState("")
+
+    // Datos de ejemplo
+    const sedes = [
+        { id: 1, nombre: "Centro Alhambra - Manizales" },
+        { id: 2, nombre: "Centro Alta Suiza - Manizales" },
+        { id: 3, nombre: "Centro Comercial Aves" },
+    ]
+
+    const posiciones = {
+        1: [
+        { id: 1, nombre: "Posición A1" },
+        { id: 2, nombre: "Posición A2" },
+        { id: 3, nombre: "Posición A3" },
+        ],
+        2: [
+        { id: 4, nombre: "Posición B1" },
+        { id: 5, nombre: "Posición B2" },
+        ],
+        3: [
+        { id: 6, nombre: "Posición C1" },
+        { id: 7, nombre: "Posición C2" },
+        { id: 8, nombre: "Posición C3" },
+        { id: 9, nombre: "Posición C4" },
+        ],
+    }
+
+    const dispositivos = {
+        1: [
+        { id: 1, nombre: "Laptop HP", serial: "SN12345" },
+        { id: 2, nombre: "Monitor Dell", serial: "SN67890" },
+        ],
+        2: [
+        { id: 3, nombre: "Teclado Logitech", serial: "SN24680" },
+        { id: 4, nombre: "Mouse Microsoft", serial: "SN13579" },
+        ],
+        3: [{ id: 5, nombre: "Impresora HP", serial: "SN97531" }],
+        4: [
+        { id: 6, nombre: "Scanner Epson", serial: "SN86420" },
+        { id: 7, nombre: "Proyector Epson", serial: "SN75319" },
+        ],
+        5: [{ id: 8, nombre: "Tablet Samsung", serial: "SN95175" }],
+        6: [{ id: 9, nombre: "Teléfono Cisco", serial: "SN15937" }],
+        7: [{ id: 10, nombre: "Router Cisco", serial: "SN35791" }],
+        8: [{ id: 11, nombre: "Switch HP", serial: "SN75391" }],
+        9: [{ id: 12, nombre: "UPS APC", serial: "SN13597" }],
+    }
+
+    // Datos de ejemplo para la tabla
+    const movimientosData = [
+        {
+        id: 1,
+        fecha: null,
+        tipo: "Movimiento",
+        sede: "Centro Alhambra - Manizales",
+        posicionOrigen: "Posición A1",
+        posicionDestino: "Posición B2",
+        usuario: {
+            nombre: "majo",
+            email: "majomenezd@emergiacc.com",
+        },
+        },
+        {
+        id: 2,
+        fecha: null,
+        tipo: "Movimiento",
+        sede: "Centro Alta Suiza - Manizales",
+        posicionOrigen: "Posición C3",
+        posicionDestino: "Posición A2",
+        usuario: {
+            nombre: "majo",
+            email: "majomenezd@emergiacc.com",
+        },
+        },
+        {
+        id: 3,
+        fecha: null,
+        tipo: "Movimiento",
+        sede: "Centro Comercial Aves",
+        posicionOrigen: "Posición B1",
+        posicionDestino: "Posición C4",
+        usuario: {
+            nombre: "majo",
+            email: "majomenezd@emergiacc.com",
+        },
+        },
+        {
+        id: 4,
+        fecha: null,
+        tipo: "Movimiento",
+        sede: "Centro Alhambra - Manizales",
+        posicionOrigen: "Posición A3",
+        posicionDestino: "Posición B1",
+        usuario: {
+            nombre: "majo",
+            email: "majomenezd@emergiacc.com",
+        },
+        },
+        {
+        id: 5,
+        fecha: null,
+        tipo: "Movimiento",
+        sede: "Centro Alta Suiza - Manizales",
+        posicionOrigen: "Posición C2",
+        posicionDestino: "Posición A1",
+        usuario: {
+            nombre: "majo",
+            email: "majomenezd@emergiacc.com",
+        },
+        },
+    ]
+
+    // Cargar datos de ejemplo al iniciar
+    useEffect(() => {
+        setMovimientos(movimientosData)
+        setPagination({
+        ...pagination,
+        totalItems: movimientosData.length,
+        })
     }, [])
 
-    const handleError = useCallback((error, context = "") => {
-        console.error(`Error ${context}:`, error)
-        setError(error.message)
-        setSnackbar({
-        open: true,
-        message: `${context ? `${context}: ` : ""}${error.message}`,
-        severity: "error",
-        })
-    }, [])
-
-    const fetchFilterOptions = useCallback(async () => {
-        try {
-        setLoading(true)
-        const response = await api.get("/movimientos/opciones_filtro", {
-            headers: { Authorization: `Bearer ${token}` },
-            params: { sede_id: sedeId },
-        })
-
-        setFilterOptions({
-            ubicaciones: response.data.ubicaciones || {},
-            dispositivos: response.data.dispositivos || [],
-            usuarios: response.data.usuarios || [],
-        })
-        } catch (err) {
-        handleError(err, "cargando opciones de filtro")
-        } finally {
-        setLoading(false)
-        }
-    }, [token, sedeId, handleError])
-
-    const fetchMovimientos = useCallback(async () => {
-        setLoading(true)
-        setError(null)
-        
-        try {
-        const params = {
-            page: pagination.page,
-            page_size: pagination.pageSize,
-            ...filters,
-            fecha_inicio: filters.fecha_inicio 
-            ? dayjs(filters.fecha_inicio).startOf('day').format('YYYY-MM-DDTHH:mm:ss')
-            : null,
-            fecha_fin: filters.fecha_fin 
-            ? dayjs(filters.fecha_fin).endOf('day').format('YYYY-MM-DDTHH:mm:ss')
-            : null,
-        }
-
-        Object.keys(params).forEach(key => {
-            if (params[key] === null || params[key] === "" || params[key] === undefined) {
-            delete params[key]
-            }
-        })
-
-        const response = await api.get("/movimientos", {
-            headers: { Authorization: `Bearer ${token}` },
-            params,
-        })
-
-        setMovimientos(response.data.results.map(item => ({
-            ...item,
-            fecha_movimiento: item.fecha_movimiento,
-        })))
-        
-        setPagination(prev => ({
-            ...prev,
-            totalItems: response.data.count,
-        }))
-
-        } catch (err) {
-        handleError(err, "cargando movimientos")
-        setMovimientos([])
-        } finally {
-        setLoading(false)
-        }
-    }, [pagination.page, pagination.pageSize, filters, token, handleError])
-
-    useEffect(() => {
-        fetchFilterOptions()
-    }, [fetchFilterOptions])
-
-    useEffect(() => {
-        fetchMovimientos()
-    }, [fetchMovimientos])
-
-    const handlePageChange = (event, newPage) => {
-        setPagination(prev => ({ ...prev, page: newPage }))
-    }
-
-    const handleFilterChange = (name, value) => {
-        setFilters(prev => ({ ...prev, [name]: value }))
-        setPagination(prev => ({ ...prev, page: 1 }))
-    }
-
-    const resetFilters = () => {
-        setFilters({
-        ubicacion_origen: "",
-        ubicacion_destino: "",
-        fecha_inicio: null,
-        fecha_fin: null,
-        dispositivo: "",
-        encargado: "",
-        search: "",
-        })
-    }
-
+    // Funciones
     const handleOpenDetails = (item) => {
         setSelectedItem(item)
-        setOpenDialog(true)
+        setOpenDetailsDialog(true)
     }
 
     const handleCloseSnackbar = () => {
-        setSnackbar(prev => ({ ...prev, open: false }))
+        setSnackbar({ ...snackbar, open: false })
     }
 
-    const getBadgeColor = (ubicacion) => {
-        switch (ubicacion) {
-        case "SEDE": return "primary"
-        case "CASA": return "secondary"
-        case "CLIENTE": return "warning"
-        default: return "default"
-        }
+    const handleFilterChange = (name, value) => {
+        setFilters({ ...filters, [name]: value })
     }
+
+    const handleApplyFilters = () => {
+        console.log("Aplicando filtros:", filters)
+        // Aquí iría la lógica para aplicar los filtros
+    }
+
+    const handleResetFilters = () => {
+        setFilters({
+        sede: "",
+        posicion: "",
+        fecha_inicio: "",
+        fecha_fin: "",
+        dispositivo: "",
+        })
+    }
+
+    const handlePageChange = (page) => {
+        setPagination({ ...pagination, page })
+    }
+
+    const handleOpenCreateDialog = () => {
+        setSedeSeleccionada("")
+        setPosicionActual("")
+        setPosicionNueva("")
+        setDispositivoSeleccionado("")
+        setSearchPosicion("")
+        setSearchDispositivo("")
+        setDetalle("")
+        setOpenDialog(true)
+    }
+
+    const handleCloseCreateDialog = () => {
+        setOpenDialog(false)
+    }
+
+    const handleCloseDetailsDialog = () => {
+        setOpenDetailsDialog(false)
+    }
+
+    const handleSedeChange = (e) => {
+        setSedeSeleccionada(e.target.value)
+        setPosicionActual("")
+        setDispositivoSeleccionado("")
+        setPosicionNueva("")
+    }
+
+    const handlePosicionActualChange = (e) => {
+        setPosicionActual(e.target.value)
+        setDispositivoSeleccionado("")
+    }
+
+    const handleSaveMovimiento = () => {
+        // Aquí iría la lógica para guardar el movimiento
+        console.log("Guardando movimiento:", {
+        sede: sedeSeleccionada,
+        posicionActual,
+        posicionNueva,
+        dispositivo: dispositivoSeleccionado,
+        detalle,
+        })
+
+        setSnackbar({
+        open: true,
+        message: "Movimiento guardado correctamente",
+        severity: "success",
+        })
+
+        handleCloseCreateDialog()
+    }
+
+    // Filtrar posiciones según la búsqueda
+    const filteredPosiciones = sedeSeleccionada
+        ? posiciones[sedeSeleccionada].filter((pos) => pos.nombre.toLowerCase().includes(searchPosicion.toLowerCase()))
+        : []
+
+    // Filtrar dispositivos según la posición actual
+    const filteredDispositivos = posicionActual
+        ? dispositivos[posicionActual].filter(
+            (disp) =>
+            disp.nombre.toLowerCase().includes(searchDispositivo.toLowerCase()) ||
+            disp.serial.toLowerCase().includes(searchDispositivo.toLowerCase()),
+        )
+        : []
 
     return (
-        <LocalizationProvider dateAdapter={AdapterDayjs}>
-        <Box sx={{ p: 3 }}>
-            <Snackbar
-            open={snackbar.open}
-            autoHideDuration={6000}
-            onClose={handleCloseSnackbar}
-            anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
-            >
-            <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }}>
-                {snackbar.message}
-            </Alert>
-            </Snackbar>
+        <div className="dashboard-container">
+        <div className="registro-image-container">
+            <img
+            src={require("../assets/E-Inventory.png") || "/placeholder.svg"}
+            alt="E-Inventory"
+            className="registro-image"
+            />
+        </div>
 
-            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 3 }}>
-            <Typography variant="h4" component="h1">
-                Registro de Movimientos
-            </Typography>
-            <Button 
-                variant="outlined" 
-                startIcon={<ArrowBack />} 
-                onClick={() => navigate(-1)} 
-                sx={{ ml: 2 }}
-            >
-                Volver
-            </Button>
-            </Box>
+        {/* Snackbar para notificaciones */}
+        {snackbar.open && (
+            <div className={`snackbar ${snackbar.severity}`}>
+            <span>{snackbar.message}</span>
+            <button className="snackbar-close" onClick={handleCloseSnackbar}>
+                ×
+            </button>
+            </div>
+        )}
 
-            <Paper sx={{ p: 3, mb: 3 }}>
-            <Grid container spacing={2}>
-                <Grid item xs={12} sm={6} md={3}>
-                <FormControl fullWidth>
-                    <InputLabel id="ubicacion-origen-label">Ubicación Origen</InputLabel>
-                    <Select
-                    labelId="ubicacion-origen-label"
-                    value={filters.ubicacion_origen}
-                    onChange={(e) => handleFilterChange("ubicacion_origen", e.target.value)}
-                    label="Ubicación Origen"
-                    disabled={loading}
-                    >
-                    <MenuItem value="">Todas</MenuItem>
-                    {Object.entries(filterOptions.ubicaciones).map(([value, label]) => (
-                        <MenuItem key={value} value={value}>
-                        {label}
-                        </MenuItem>
+        <div className="header">
+            <h1>Registro de Movimientos</h1>
+            <div className="header-buttons">
+            <button className="btn btn-primary" onClick={handleOpenCreateDialog}>
+                <span className="icon">+</span> Crear Nuevo Movimiento
+            </button>
+            </div>
+        </div>
+
+        <div className="filter-card">
+            <div className="filter-grid">
+            <div className="filter-item">
+                <label htmlFor="sede">Sede</label>
+                <select id="sede" value={filters.sede} onChange={(e) => handleFilterChange("sede", e.target.value)}>
+                <option value="">Todas</option>
+                {sedes.map((sede) => (
+                    <option key={sede.id} value={sede.id}>
+                    {sede.nombre}
+                    </option>
+                ))}
+                </select>
+            </div>
+
+            <div className="filter-item">
+                <label htmlFor="posicion">Posición</label>
+                <select
+                id="posicion"
+                value={filters.posicion}
+                onChange={(e) => handleFilterChange("posicion", e.target.value)}
+                disabled={!filters.sede}
+                >
+                <option value="">Todas</option>
+                {filters.sede &&
+                    posiciones[filters.sede] &&
+                    posiciones[filters.sede].map((pos) => (
+                    <option key={pos.id} value={pos.id}>
+                        {pos.nombre}
+                    </option>
                     ))}
-                    </Select>
-                </FormControl>
-                </Grid>
+                </select>
+            </div>
 
-                <Grid item xs={12} sm={6} md={3}>
-                <FormControl fullWidth>
-                    <InputLabel id="ubicacion-destino-label">Ubicación Destino</InputLabel>
-                    <Select
-                    labelId="ubicacion-destino-label"
-                    value={filters.ubicacion_destino}
-                    onChange={(e) => handleFilterChange("ubicacion_destino", e.target.value)}
-                    label="Ubicación Destino"
-                    disabled={loading}
-                    >
-                    <MenuItem value="">Todas</MenuItem>
-                    {Object.entries(filterOptions.ubicaciones).map(([value, label]) => (
-                        <MenuItem key={value} value={value}>
-                        {label}
-                        </MenuItem>
-                    ))}
-                    </Select>
-                </FormControl>
-                </Grid>
-
-                <Grid item xs={12} sm={6} md={3}>
-                <DatePicker
-                    label="Fecha inicio"
-                    value={filters.fecha_inicio}
-                    onChange={(newValue) => handleFilterChange("fecha_inicio", newValue)}
-                    slotProps={{ textField: { fullWidth: true } }}
-                    maxDate={filters.fecha_fin || dayjs()}
-                    disabled={loading}
+            <div className="filter-item">
+                <label htmlFor="fecha_inicio">Fecha inicio</label>
+                <input
+                type="date"
+                id="fecha_inicio"
+                value={filters.fecha_inicio}
+                onChange={(e) => handleFilterChange("fecha_inicio", e.target.value)}
                 />
-                </Grid>
+            </div>
 
-                <Grid item xs={12} sm={6} md={3}>
-                <DatePicker
-                    label="Fecha fin"
-                    value={filters.fecha_fin}
-                    onChange={(newValue) => handleFilterChange("fecha_fin", newValue)}
-                    slotProps={{ textField: { fullWidth: true } }}
-                    minDate={filters.fecha_inicio}
-                    maxDate={dayjs()}
-                    disabled={loading}
+            <div className="filter-item">
+                <label htmlFor="fecha_fin">Fecha fin</label>
+                <input
+                type="date"
+                id="fecha_fin"
+                value={filters.fecha_fin}
+                onChange={(e) => handleFilterChange("fecha_fin", e.target.value)}
                 />
-                </Grid>
+            </div>
 
-                <Grid item xs={12} sm={6} md={3}>
-                <FormControl fullWidth>
-                    <InputLabel id="dispositivo-label">Dispositivo</InputLabel>
-                    <Select
-                    labelId="dispositivo-label"
-                    value={filters.dispositivo}
-                    onChange={(e) => handleFilterChange("dispositivo", e.target.value)}
-                    label="Dispositivo"
-                    disabled={loading || filterOptions.dispositivos.length === 0}
-                    >
-                    <MenuItem value="">Todos</MenuItem>
-                    {filterOptions.dispositivos.map((dispositivo) => (
-                        <MenuItem key={dispositivo.id} value={dispositivo.id}>
-                        {dispositivo.marca} {dispositivo.modelo} ({dispositivo.serial})
-                        </MenuItem>
+            <div className="filter-item">
+                <label htmlFor="dispositivo">Dispositivo</label>
+                <select
+                id="dispositivo"
+                value={filters.dispositivo}
+                onChange={(e) => handleFilterChange("dispositivo", e.target.value)}
+                disabled={!filters.posicion}
+                >
+                <option value="">Todos</option>
+                {filters.posicion &&
+                    dispositivos[filters.posicion] &&
+                    dispositivos[filters.posicion].map((disp) => (
+                    <option key={disp.id} value={disp.id}>
+                        {disp.nombre} ({disp.serial})
+                    </option>
                     ))}
-                    </Select>
-                </FormControl>
-                </Grid>
+                </select>
+            </div>
+            </div>
 
-                <Grid item xs={12} sm={6} md={3}>
-                <FormControl fullWidth>
-                    <InputLabel id="encargado-label">Encargado</InputLabel>
-                    <Select
-                    labelId="encargado-label"
-                    value={filters.encargado}
-                    onChange={(e) => handleFilterChange("encargado", e.target.value)}
-                    label="Encargado"
-                    disabled={loading || filterOptions.usuarios.length === 0}
-                    >
-                    <MenuItem value="">Todos</MenuItem>
-                    {filterOptions.usuarios.map((usuario) => (
-                        <MenuItem key={usuario.id} value={usuario.id}>
-                        {usuario.nombre} ({usuario.rol})
-                        </MenuItem>
-                    ))}
-                    </Select>
-                </FormControl>
-                </Grid>
+            <div className="filter-buttons">
+            <button className="btn btn-primary" onClick={handleApplyFilters}>
+                <span className="icon">⚙</span> Aplicar Filtros
+            </button>
+            <button className="btn btn-outline" onClick={handleResetFilters}>
+                <span className="icon">×</span> Limpiar Filtros
+            </button>
+            <button className="btn btn-text">
+                <span className="icon">↻</span> Actualizar
+            </button>
+            </div>
+        </div>
 
-                <Grid item xs={12}>
-                <Box sx={{ display: "flex", gap: 2 }}>
-                    <Button 
-                    variant="contained" 
-                    startIcon={<FilterList />} 
-                    onClick={fetchMovimientos} 
-                    disabled={loading}
-                    >
-                    {loading ? "Cargando..." : "Aplicar Filtros"}
-                    </Button>
-                    <Button 
-                    variant="outlined" 
-                    startIcon={<Clear />} 
-                    onClick={resetFilters} 
-                    disabled={loading}
-                    >
-                    Limpiar Filtros
-                    </Button>
-                    <Button 
-                    variant="text" 
-                    startIcon={<Refresh />} 
-                    onClick={() => {
-                        fetchFilterOptions()
-                        fetchMovimientos()
-                    }}
-                    disabled={loading}
-                    >
-                    Actualizar
-                    </Button>
-                </Box>
-                </Grid>
-            </Grid>
-            </Paper>
-
-            <Paper sx={{ p: 2 }}>
-            <TableContainer>
-                <Table>
-                <TableHead>
-                    <TableRow>
-                    <TableCell>Fecha</TableCell>
-                    <TableCell>Dispositivo</TableCell>
-                    <TableCell>Origen</TableCell>
-                    <TableCell>Destino</TableCell>
-                    <TableCell>Encargado</TableCell>
-                    <TableCell>Acciones</TableCell>
-                    </TableRow>
-                </TableHead>
-                <TableBody>
-                    {loading ? (
-                    <TableRow>
-                        <TableCell colSpan={6} align="center">
-                        <Box sx={{ display: "flex", justifyContent: "center", py: 3 }}>
-                            <CircularProgress />
-                        </Box>
-                        </TableCell>
-                    </TableRow>
-                    ) : error ? (
-                    <TableRow>
-                        <TableCell colSpan={6} align="center" sx={{ py: 3 }}>
-                        <Alert
-                            severity="error"
-                            action={
-                            <Button 
-                                color="inherit" 
-                                size="small" 
-                                onClick={fetchMovimientos} 
-                                startIcon={<Refresh />}
-                            >
-                                Reintentar
-                            </Button>
-                            }
-                        >
-                            {error}
-                        </Alert>
-                        </TableCell>
-                    </TableRow>
-                    ) : movimientos.length === 0 ? (
-                    <TableRow>
-                        <TableCell colSpan={6} align="center" sx={{ py: 3 }}>
-                        No se encontraron movimientos con los filtros aplicados
-                        </TableCell>
-                    </TableRow>
-                    ) : (
-                    movimientos.map((item) => (
-                        <TableRow key={item.id} hover>
-                        <TableCell>{formatDateUTC(item.fecha_movimiento)}</TableCell>
-                        <TableCell>
-                            {item.dispositivo ? (
-                            <>
-                                {item.dispositivo.marca} {item.dispositivo.modelo}
-                                <br />
-                                <small style={{ color: "#666" }}>{item.dispositivo.serial}</small>
-                            </>
-                            ) : (
-                            "Dispositivo eliminado"
-                            )}
-                        </TableCell>
-                        <TableCell>
-                            <Chip
-                            label={filterOptions.ubicaciones[item.ubicacion_origen] || item.ubicacion_origen}
-                            color={getBadgeColor(item.ubicacion_origen)}
-                            size="small"
-                            />
-                        </TableCell>
-                        <TableCell>
-                            <Chip
-                            label={filterOptions.ubicaciones[item.ubicacion_destino] || item.ubicacion_destino}
-                            color={getBadgeColor(item.ubicacion_destino)}
-                            size="small"
-                            />
-                        </TableCell>
-                        <TableCell>
-                            {item.encargado ? (
-                            <>
-                                {item.encargado.nombre || item.encargado.username}
-                                <br />
-                                <small style={{ color: "#666" }}>{item.encargado.email}</small>
-                            </>
-                            ) : (
-                            "Sistema"
-                            )}
-                        </TableCell>
-                        <TableCell>
-                            <Tooltip title="Ver detalles">
-                            <IconButton onClick={() => handleOpenDetails(item)}>
-                                <Visibility color="primary" />
-                            </IconButton>
-                            </Tooltip>
-                        </TableCell>
-                        </TableRow>
-                    ))
-                    )}
-                </TableBody>
-                </Table>
-            </TableContainer>
+        <div className="table-card">
+            <table className="data-table">
+            <thead>
+                <tr>
+                <th>Fecha</th>
+                <th>Tipo</th>
+                <th>Usuario</th>
+                <th>Detalles</th>
+                <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {loading ? (
+                <tr>
+                    <td colSpan={5} className="loading-cell">
+                    <div className="loading-spinner"></div>
+                    </td>
+                </tr>
+                ) : error ? (
+                <tr>
+                    <td colSpan={5} className="error-cell">
+                    <div className="error-message">{error}</div>
+                    </td>
+                </tr>
+                ) : movimientos.length === 0 ? (
+                <tr>
+                    <td colSpan={5} className="empty-cell">
+                    No se encontraron movimientos
+                    </td>
+                </tr>
+                ) : (
+                movimientos.map((item) => (
+                    <tr key={item.id}>
+                    <td>{item.fecha ? new Date(item.fecha).toLocaleDateString() : "No registrado"}</td>
+                    <td>
+                        <span className="badge">{item.tipo}</span>
+                    </td>
+                    <td>
+                        <div className="user-info">
+                        <div>{item.usuario.nombre}</div>
+                        <div className="user-email">{item.usuario.email}</div>
+                        </div>
+                    </td>
+                    <td>
+                        <div className="movement-details">
+                        De: <span className="position">{item.posicionOrigen}</span> a{" "}
+                        <span className="position">{item.posicionDestino}</span>
+                        </div>
+                    </td>
+                    <td>
+                        <button className="btn-icon" onClick={() => handleOpenDetails(item)} title="Ver detalles">
+                        <span className="icon">👁</span>
+                        </button>
+                    </td>
+                    </tr>
+                ))
+                )}
+            </tbody>
+            </table>
 
             {!loading && !error && movimientos.length > 0 && (
-                <Box sx={{ display: "flex", justifyContent: "center", mt: 3 }}>
-                <Pagination
-                    count={Math.ceil(pagination.totalItems / pagination.pageSize)}
-                    page={pagination.page}
-                    onChange={handlePageChange}
-                    color="primary"
-                    showFirstButton
-                    showLastButton
-                    disabled={loading}
-                />
-                </Box>
-            )}
-            </Paper>
-
-            <Dialog 
-            open={openDialog} 
-            onClose={() => setOpenDialog(false)} 
-            maxWidth="md" 
-            fullWidth 
-            scroll="paper"
-            >
-            <DialogTitle>Detalles del Movimiento</DialogTitle>
-            <DialogContent dividers>
-                {selectedItem && (
-                <Grid container spacing={3}>
-                    <Grid item xs={12} md={6}>
-                    <Typography variant="h6" gutterBottom>
-                        Información General
-                    </Typography>
-                    <Box sx={{ mb: 2 }}>
-                        <Typography>
-                        <strong>Fecha:</strong> {formatDateUTC(selectedItem.fecha_movimiento)}
-                        </Typography>
-                    </Box>
-
-                    <Typography variant="subtitle1" gutterBottom>
-                        Dispositivo
-                    </Typography>
-                    {selectedItem.dispositivo ? (
-                        <Box sx={{ pl: 2 }}>
-                        <Typography>
-                            <strong>Marca:</strong> {selectedItem.dispositivo.marca || "N/A"}
-                        </Typography>
-                        <Typography>
-                            <strong>Modelo:</strong> {selectedItem.dispositivo.modelo || "N/A"}
-                        </Typography>
-                        <Typography>
-                            <strong>Serial:</strong> {selectedItem.dispositivo.serial || "N/A"}
-                        </Typography>
-                        <Typography>
-                            <strong>Placa CU:</strong> {selectedItem.dispositivo.placa_cu || "N/A"}
-                        </Typography>
-                        </Box>
-                    ) : (
-                        <Typography>Dispositivo eliminado</Typography>
-                    )}
-                    </Grid>
-
-                    <Grid item xs={12} md={6}>
-                    <Typography variant="subtitle1" gutterBottom>
-                        Ubicaciones
-                    </Typography>
-                    <Box sx={{ pl: 2 }}>
-                        <Typography>
-                        <strong>Origen:</strong> 
-                        <Chip
-                            label={filterOptions.ubicaciones[selectedItem.ubicacion_origen] || selectedItem.ubicacion_origen}
-                            color={getBadgeColor(selectedItem.ubicacion_origen)}
-                            size="small"
-                            sx={{ ml: 1 }}
-                        />
-                        </Typography>
-                        <Typography>
-                        <strong>Destino:</strong> 
-                        <Chip
-                            label={filterOptions.ubicaciones[selectedItem.ubicacion_destino] || selectedItem.ubicacion_destino}
-                            color={getBadgeColor(selectedItem.ubicacion_destino)}
-                            size="small"
-                            sx={{ ml: 1 }}
-                        />
-                        </Typography>
-                    </Box>
-
-                    <Typography variant="subtitle1" gutterBottom sx={{ mt: 2 }}>
-                        Encargado
-                    </Typography>
-                    {selectedItem.encargado ? (
-                        <Box sx={{ pl: 2 }}>
-                        <Typography>
-                            <strong>Nombre:</strong> {selectedItem.encargado.nombre || selectedItem.encargado.username}
-                        </Typography>
-                        <Typography>
-                            <strong>Email:</strong> {selectedItem.encargado.email || "N/A"}
-                        </Typography>
-                        <Typography>
-                            <strong>Rol:</strong> {selectedItem.encargado.rol || "N/A"}
-                        </Typography>
-                        </Box>
-                    ) : (
-                        <Typography>Sistema</Typography>
-                    )}
-                    </Grid>
-
-                    <Grid item xs={12}>
-                    <Typography variant="h6" gutterBottom>
-                        Observaciones
-                    </Typography>
-                    <Paper sx={{ p: 2, backgroundColor: "#f5f5f5" }}>
-                        {selectedItem.observacion || "No hay observaciones registradas"}
-                    </Paper>
-                    </Grid>
-                </Grid>
-                )}
-            </DialogContent>
-            <DialogActions>
-                <Button 
-                onClick={() => setOpenDialog(false)} 
-                variant="contained"
-                color="primary"
+            <div className="pagination">
+                <button
+                className="pagination-btn"
+                onClick={() => handlePageChange(pagination.page - 1)}
+                disabled={pagination.page === 1}
                 >
-                Cerrar
-                </Button>
-            </DialogActions>
-            </Dialog>
-        </Box>
-        </LocalizationProvider>
+                &laquo;
+                </button>
+                {[...Array(Math.ceil(pagination.totalItems / pagination.pageSize))].map((_, i) => (
+                <button
+                    key={i}
+                    className={`pagination-btn ${pagination.page === i + 1 ? "active" : ""}`}
+                    onClick={() => handlePageChange(i + 1)}
+                >
+                    {i + 1}
+                </button>
+                ))}
+                <button
+                className="pagination-btn"
+                onClick={() => handlePageChange(pagination.page + 1)}
+                disabled={pagination.page === Math.ceil(pagination.totalItems / pagination.pageSize)}
+                >
+                &raquo;
+                </button>
+            </div>
+            )}
+        </div>
+
+        {/* Modal para crear nuevo movimiento */}
+        {openDialog && (
+            <div className="modal-overlay">
+            <div className="modal">
+                <div className="modal-header">
+                <h2>Crear Nuevo Movimiento</h2>
+                <button className="modal-close" onClick={handleCloseCreateDialog}>
+                    ×
+                </button>
+                </div>
+                <div className="modal-content">
+                <div className="modal-grid">
+                    <div className="modal-column">
+                    <div className="form-group">
+                        <label htmlFor="sede-modal">Sede</label>
+                        <select id="sede-modal" value={sedeSeleccionada} onChange={handleSedeChange}>
+                        <option value="">Seleccionar sede</option>
+                        {sedes.map((sede) => (
+                            <option key={sede.id} value={sede.id}>
+                            {sede.nombre}
+                            </option>
+                        ))}
+                        </select>
+                    </div>
+
+                    {sedeSeleccionada && (
+                        <>
+                        <div className="form-group">
+                            <label htmlFor="search-posicion">Buscar posición actual</label>
+                            <div className="search-input">
+                            <span className="search-icon">🔍</span>
+                            <input
+                                id="search-posicion"
+                                type="text"
+                                value={searchPosicion}
+                                onChange={(e) => setSearchPosicion(e.target.value)}
+                                placeholder="Buscar posición..."
+                            />
+                            </div>
+                        </div>
+
+                        <div className="form-group">
+                            <label htmlFor="posicion-actual">Posición Actual</label>
+                            <select id="posicion-actual" value={posicionActual} onChange={handlePosicionActualChange}>
+                            <option value="">Seleccionar posición</option>
+                            {filteredPosiciones.map((pos) => (
+                                <option key={pos.id} value={pos.id}>
+                                {pos.nombre}
+                                </option>
+                            ))}
+                            </select>
+                        </div>
+                        </>
+                    )}
+
+                    {posicionActual && (
+                        <>
+                        <div className="form-group">
+                            <label htmlFor="search-dispositivo">Buscar dispositivo</label>
+                            <div className="search-input">
+                            <span className="search-icon">🔍</span>
+                            <input
+                                id="search-dispositivo"
+                                type="text"
+                                value={searchDispositivo}
+                                onChange={(e) => setSearchDispositivo(e.target.value)}
+                                placeholder="Buscar por nombre o serial..."
+                            />
+                            </div>
+                        </div>
+
+                        <div className="form-group">
+                            <label htmlFor="dispositivo-modal">Dispositivo</label>
+                            <select
+                            id="dispositivo-modal"
+                            value={dispositivoSeleccionado}
+                            onChange={(e) => setDispositivoSeleccionado(e.target.value)}
+                            >
+                            <option value="">Seleccionar dispositivo</option>
+                            {filteredDispositivos.map((disp) => (
+                                <option key={disp.id} value={disp.id}>
+                                {disp.nombre} ({disp.serial})
+                                </option>
+                            ))}
+                            </select>
+                        </div>
+                        </>
+                    )}
+                    </div>
+
+                    <div className="modal-column">
+                    {posicionActual && (
+                        <>
+                        <div className="form-group">
+                            <label htmlFor="posicion-nueva">Nueva Posición</label>
+                            <select
+                            id="posicion-nueva"
+                            value={posicionNueva}
+                            onChange={(e) => setPosicionNueva(e.target.value)}
+                            >
+                            <option value="">Seleccionar nueva posición</option>
+                            {sedeSeleccionada &&
+                                posiciones[sedeSeleccionada].map((pos) => (
+                                <option key={pos.id} value={pos.id}>
+                                    {pos.nombre}
+                                </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div className="form-group">
+                            <label htmlFor="usuario">Usuario</label>
+                            <input id="usuario" type="text" value="Usuario Actual" disabled />
+                        </div>
+
+                        <div className="form-group">
+                            <label htmlFor="detalle">Detalle del Movimiento</label>
+                            <textarea
+                            id="detalle"
+                            rows={4}
+                            value={detalle}
+                            onChange={(e) => setDetalle(e.target.value)}
+                            placeholder="Describa el motivo del movimiento"
+                            ></textarea>
+                        </div>
+                        </>
+                    )}
+                    </div>
+                </div>
+                </div>
+                <div className="modal-footer">
+                <button className="btn btn-outline" onClick={handleCloseCreateDialog}>
+                    Cancelar
+                </button>
+                <button
+                    className="btn btn-primary"
+                    onClick={handleSaveMovimiento}
+                    disabled={!sedeSeleccionada || !posicionActual || !dispositivoSeleccionado || !posicionNueva}
+                >
+                    Guardar Movimiento
+                </button>
+                </div>
+            </div>
+            </div>
+        )}
+
+        {/* Modal para ver detalles */}
+        {openDetailsDialog && selectedItem && (
+            <div className="modal-overlay">
+            <div className="modal">
+                <div className="modal-header">
+                <h2>Detalles del Movimiento</h2>
+                <button className="modal-close" onClick={handleCloseDetailsDialog}>
+                    ×
+                </button>
+                </div>
+                <div className="modal-content">
+                <div className="details-grid">
+                    <div className="details-section">
+                    <h3>Información General</h3>
+                    <p>
+                        <strong>Fecha:</strong>{" "}
+                        {selectedItem.fecha ? new Date(selectedItem.fecha).toLocaleString() : "No registrado"}
+                    </p>
+                    <p>
+                        <strong>Tipo:</strong> {selectedItem.tipo}
+                    </p>
+                    <p>
+                        <strong>Sede:</strong> {selectedItem.sede || "Centro Alhambra - Manizales"}
+                    </p>
+                    </div>
+
+                    <div className="details-section">
+                    <h3>Movimiento</h3>
+                    <p>
+                        <strong>Posición Origen:</strong> {selectedItem.posicionOrigen}
+                    </p>
+                    <p>
+                        <strong>Posición Destino:</strong> {selectedItem.posicionDestino}
+                    </p>
+                    </div>
+
+                    <div className="details-section full-width">
+                    <h3>Usuario</h3>
+                    <p>
+                        <strong>Nombre:</strong> {selectedItem.usuario.nombre}
+                    </p>
+                    <p>
+                        <strong>Email:</strong> {selectedItem.usuario.email}
+                    </p>
+                    </div>
+                </div>
+                </div>
+                <div className="modal-footer">
+                <button className="btn btn-primary" onClick={handleCloseDetailsDialog}>
+                    Cerrar
+                </button>
+                </div>
+            </div>
+            </div>
+        )}
+        </div>
     )
     }
 
