@@ -1,5 +1,5 @@
 "use client"
-import { FaHome, FaCogs, FaPowerOff } from "react-icons/fa"
+import { FaHome, FaPowerOff } from "react-icons/fa"
 import { MdInventory, MdHistory } from "react-icons/md"
 import { BsDiagram3 } from "react-icons/bs"
 import { AiOutlineFileText } from "react-icons/ai"
@@ -29,7 +29,6 @@ const SidebarMenu = () => {
     { path: "/sedes", icon: <IoIosDesktop size={20} />, label: "Sedes" },
     { path: "/History", icon: <MdHistory size={20} />, label: "Historial" },
     { path: "/Movimiento", icon: <MdHistory size={20} />, label: "Movimiento" },
-    { path: "/settings", icon: <FaCogs size={20} />, label: "Config" },
   ]
 
   return (

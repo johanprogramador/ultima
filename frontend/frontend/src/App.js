@@ -23,7 +23,6 @@ import ForgotPassword from "./components/ForgotPassword";
 import ResetPassword from "./components/ResetPassword";
 import Dashboard from "./pages/Dashboard";
 import Inventory from "./pages/Inventory";
-import Settings from "./pages/Settings";
 import Records from "./pages/Records";
 import Movimiento from "./pages/Movimientos";
 import History from "./pages/History";
@@ -89,7 +88,6 @@ function App() {
           <Route element={<ProtectedRoute />}>
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/inventory" element={<Inventory />} />
-            <Route path="/settings" element={<Settings />} />
             <Route path="/services" element={<Services />} />
             <Route path="/sedes" element={<Sedes />} />
             <Route path="/records" element={<Records />} />
