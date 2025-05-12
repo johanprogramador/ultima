@@ -485,6 +485,9 @@ class Movimiento(models.Model):
         null=True,
         blank=True
     )
+    
+    confirmado = models.BooleanField(default=False)
+    fecha_confirmacion = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ['-fecha_movimiento']
@@ -679,4 +682,37 @@ def registrar_eliminacion(sender, instance, **kwargs):
             instancia_id=instance.id,
             usuario=usuario,
             sede_nombre=sede
+        )
+        
+@receiver(post_save, sender=Movimiento)
+def actualizar_posicion_despues_movimiento(sender, instance, created, **kwargs):
+    """
+    Actualiza automáticamente la posición del dispositivo cuando se confirma un movimiento
+    """
+    if instance.confirmado and instance.posicion_destino and instance.dispositivo:
+        dispositivo = instance.dispositivo
+        posicion_anterior = dispositivo.posicion
+        
+        # Remover de posición anterior si existe
+        if posicion_anterior:
+            posicion_anterior.dispositivos.remove(dispositivo)
+        
+        # Agregar a nueva posición
+        instance.posicion_destino.dispositivos.add(dispositivo)
+        
+        # Actualizar dispositivo
+        dispositivo.posicion = instance.posicion_destino
+        dispositivo.sede = instance.posicion_destino.sede if instance.posicion_destino.sede else instance.sede
+        dispositivo.save()
+        
+        # Registrar en el historial
+        Historial.objects.create(
+            dispositivo=dispositivo,
+            usuario=instance.encargado,
+            tipo_cambio=Historial.TipoCambio.MOVIMIENTO,
+            cambios={
+                "movimiento_id": instance.id,
+                "posicion_anterior": posicion_anterior.id if posicion_anterior else None,
+                "posicion_nueva": instance.posicion_destino.id
+            }
         )

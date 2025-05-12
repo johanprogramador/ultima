@@ -1176,6 +1176,159 @@ def dispositivo_choices(request):
     
     
 # vistas para los movimientos
+class MovimientoViewSet(viewsets.ModelViewSet):
+    queryset = Movimiento.objects.select_related(
+        'dispositivo',
+        'posicion_origen',
+        'posicion_destino',
+        'encargado',
+        'encargado__user',
+        'sede'
+    ).all()
+    serializer_class = MovimientoSerializer
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    
+    filterset_fields = {
+        'dispositivo': ['exact'],
+        'encargado': ['exact'],
+        'sede': ['exact'],
+        'fecha_movimiento': ['date', 'date__gte', 'date__lte'],
+        'ubicacion_origen': ['exact'],
+        'ubicacion_destino': ['exact'],
+    }
+    
+    search_fields = [
+        'dispositivo__serial',
+        'dispositivo__modelo',
+        'observacion',
+        'encargado__user__username',
+        'encargado__nombre_completo'
+    ]
+    
+    ordering_fields = [
+        'fecha_movimiento',
+        'dispositivo__serial'
+    ]
+    
+    ordering = ['-fecha_movimiento']
+
+    def get_permissions(self):
+        if self.action in ['opciones_filtro']:
+            return [AllowAny()]
+        return [IsAuthenticated()]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        
+        # Filtro por usuario no admin
+        if not self.request.user.is_staff:
+            queryset = queryset.filter(encargado__user=self.request.user)
+        
+        # Filtro por fechas personalizado
+        fecha_inicio = self.request.query_params.get('fecha_inicio')
+        fecha_fin = self.request.query_params.get('fecha_fin')
+        
+        if fecha_inicio:
+            try:
+                fecha_inicio = datetime.strptime(fecha_inicio, '%Y-%m-%d').date()
+                queryset = queryset.filter(fecha_movimiento__date__gte=fecha_inicio)
+            except ValueError as e:
+                logger.error(f"Error al parsear fecha_inicio: {str(e)}")
+                
+        if fecha_fin:
+            try:
+                fecha_fin = datetime.strptime(fecha_fin, '%Y-%m-%d').date()
+                queryset = queryset.filter(fecha_movimiento__date__lte=fecha_fin)
+            except ValueError as e:
+                logger.error(f"Error al parsear fecha_fin: {str(e)}")
+                
+        return queryset
+
+    @action(detail=False, methods=['get'])
+    def opciones_filtro(self, request):
+        sede_id = request.query_params.get('sede_id')
+        
+        if not sede_id:
+            return Response(
+                {'error': 'El parámetro sede_id es requerido'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            data = {
+                'ubicaciones': dict(Ubicacion.UBICACIONES), # type: ignore
+                'dispositivos': list(Dispositivo.objects.filter(
+                    sede_id=sede_id
+                ).values('id', 'marca', 'modelo', 'serial')),
+                'usuarios': list(RolUser.objects.filter(
+                    sede_id=sede_id
+                ).values('id', 'nombre_completo', 'user__username', 'user__email'))
+            }
+            
+            return Response(data)
+            
+        except Exception as e:
+            logger.error(f"Error en opciones_filtro: {str(e)}")
+            return Response(
+                {'error': 'Error al obtener opciones de filtro'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=True, methods=['post'])
+    def revertir(self, request, pk=None):
+        movimiento = self.get_object()
+        
+        try:
+            with transaction.atomic():
+                # Crear movimiento inverso
+                nuevo_movimiento = Movimiento.objects.create(
+                    dispositivo=movimiento.dispositivo,
+                    posicion_origen=movimiento.posicion_destino,
+                    posicion_destino=movimiento.posicion_origen,
+                    encargado=request.user.roluser,
+                    observacion=f"Reversión del movimiento #{movimiento.id}",
+                    sede=movimiento.sede
+                )
+                
+                # Actualizar posición del dispositivo
+                if movimiento.posicion_origen:
+                    dispositivo = movimiento.dispositivo
+                    
+                    # Remover de posición actual
+                    if dispositivo.posicion:
+                        dispositivo.posicion.dispositivos.remove(dispositivo)
+                    
+                    # Agregar a posición original
+                    movimiento.posicion_origen.dispositivos.add(dispositivo)
+                    
+                    # Actualizar dispositivo
+                    dispositivo.posicion = movimiento.posicion_origen
+                    dispositivo.piso = movimiento.posicion_origen.piso
+                    dispositivo.save()
+                
+                serializer = self.get_serializer(nuevo_movimiento)
+                return Response(serializer.data, status=status.HTTP_201_CREATED)
+                
+        except Exception as e:
+            logger.error(f"Error al revertir movimiento: {str(e)}")
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @action(detail=False, methods=['get'])
+    def resumen(self, request):
+        queryset = self.filter_queryset(self.get_queryset())
+        
+        resumen = queryset.values(
+            'dispositivo__tipo',
+            'ubicacion_destino'
+        ).annotate(
+            total=Count('id')
+        ).order_by('-total')
+        
+        return Response(resumen)
+    
     
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -1300,73 +1453,6 @@ class MovimientoViewSet(viewsets.ModelViewSet):
             return Response(
                 {"error": "Error al crear movimiento"},
                 status=status.HTTP_400_BAD_REQUEST
-            )
-            
-            
-    @action(detail=True, methods=['post'])
-    def confirmar_movimiento(self, request, pk=None):
-        """
-        Endpoint para confirmar un movimiento y aplicar los cambios a las posiciones
-        """
-        movimiento = self.get_object()
-        
-        if movimiento.confirmado:
-            return Response(
-                {"error": "Este movimiento ya fue confirmado"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        dispositivo = movimiento.dispositivo
-        posicion_destino = movimiento.posicion_destino
-        
-        if not dispositivo or not posicion_destino:
-            return Response(
-                {"error": "Movimiento no tiene dispositivo o posición destino válidos"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        try:
-            with transaction.atomic():
-                # 1. Remover de posición anterior si existe
-                posicion_anterior = dispositivo.posicion
-                if posicion_anterior:
-                    posicion_anterior.dispositivos.remove(dispositivo)
-                
-                # 2. Agregar a nueva posición
-                posicion_destino.dispositivos.add(dispositivo)
-                
-                # 3. Actualizar dispositivo
-                dispositivo.posicion = posicion_destino
-                dispositivo.sede = posicion_destino.sede if posicion_destino.sede else movimiento.sede
-                dispositivo.save()
-                
-                # 4. Marcar movimiento como confirmado
-                movimiento.confirmado = True
-                movimiento.fecha_confirmacion = timezone.now()
-                movimiento.save()
-                
-                # 5. Registrar en historial
-                Historial.objects.create(
-                    dispositivo=dispositivo,
-                    usuario=request.user,
-                    tipo_cambio=Historial.TipoCambio.MOVIMIENTO,
-                    cambios={
-                        "movimiento_id": movimiento.id,
-                        "posicion_anterior": posicion_anterior.id if posicion_anterior else None,
-                        "posicion_nueva": posicion_destino.id
-                    }
-                )
-                
-                return Response(
-                    {"message": "Movimiento confirmado y cambios aplicados"},
-                    status=status.HTTP_200_OK
-                )
-                
-        except Exception as e:
-            logger.error(f"Error al confirmar movimiento: {str(e)}", exc_info=True)
-            return Response(
-                {"error": "Error al confirmar movimiento"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
     @action(detail=False, methods=['post'])

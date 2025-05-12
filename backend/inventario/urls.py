@@ -61,6 +61,8 @@ urlpatterns = [
     # Rutas para dispositivos
     path('api/dispositivos/', views.dispositivo_view, name='dispositivo_view'),
     path('api/dispositivos/<int:dispositivo_id>/', views.dispositivo_detail_view, name='dispositivo_view'),
+    path('api/movimientos/crear/', MovimientoViewSet.as_view({'post': 'crear_movimiento_completo'}), name='movimiento-crear'),
+    path('api/dispositivos-disponibles/<int:sede_id>/', views.dispositivos_disponibles_para_movimiento, name='dispositivos-disponibles'),
     
     
 # Rutas para servicios
@@ -99,6 +101,7 @@ urlpatterns = [
     
     
     path('api/dispositivos-por-sede/', views.dispositivos_por_sede, name='dispositivos-por-sede'),
+    path('api/movimientos/<int:pk>/confirmar/', MovimientoViewSet.as_view({'post': 'confirmar_movimiento'}), name='movimiento-confirmar'),
 ]
 
 

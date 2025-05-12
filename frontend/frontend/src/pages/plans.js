@@ -3009,7 +3009,7 @@ function FloorPlan() {
                         alignItems: "center",
                       }}
                     >
-                      <h4 style={{ margin: 0, fontSize: "14px", color: "#fff" }}>Dispositivos Seleccionados</h4>
+                      <h4 style={{ margin: 0, fontSize: "14px", color: "#fff" }}>Dispositivos en Posicion</h4>
                       <span
                         style={{
                           fontSize: "12px",

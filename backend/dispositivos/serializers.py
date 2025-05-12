@@ -601,77 +601,99 @@ class MovimientoSerializer(serializers.ModelSerializer):
     posicion_origen_info = serializers.SerializerMethodField()
     posicion_destino_info = serializers.SerializerMethodField()
     encargado_info = serializers.SerializerMethodField()
-    ubicacion_origen_display = serializers.CharField(source='get_ubicacion_origen_display', read_only=True)
-    ubicacion_destino_display = serializers.CharField(source='get_ubicacion_destino_display', read_only=True)
+    sede_info = serializers.SerializerMethodField()
+    confirmado = serializers.BooleanField(read_only=True)
+    fecha_confirmacion = serializers.DateTimeField(read_only=True)
 
     class Meta:
         model = Movimiento
         fields = [
-            'id',
-            'fecha_movimiento',
-            'dispositivo',
-            'dispositivo_info',
-            'posicion_origen',
-            'posicion_origen_info',
-            'posicion_destino',
-            'posicion_destino_info',
-            'ubicacion_origen',
-            'ubicacion_origen_display',
-            'ubicacion_destino',
-            'ubicacion_destino_display',
-            'encargado',
-            'encargado_info',
-            'observacion',
-            'sede'
+            'id', 'fecha_movimiento', 'dispositivo', 'dispositivo_info',
+            'posicion_origen', 'posicion_origen_info', 'posicion_destino', 
+            'posicion_destino_info', 'encargado', 'encargado_info',
+            'observacion', 'sede', 'sede_info'
+            'confirmado', 'fecha_confirmacion'
         ]
         extra_kwargs = {
-            'dispositivo': {'required': True},
             'fecha_movimiento': {'read_only': True},
-            'encargado': {'required': False, 'allow_null': True}
+            'encargado': {'required': False}
         }
 
     def get_dispositivo_info(self, obj):
-        return {
-            'serial': obj.dispositivo.serial,
-            'modelo': obj.dispositivo.modelo,
-            'tipo': obj.dispositivo.get_tipo_display()
-        }
+        if obj.dispositivo:
+            return {
+                'id': obj.dispositivo.id,
+                'serial': obj.dispositivo.serial,
+                'modelo': obj.dispositivo.modelo,
+                'tipo': obj.dispositivo.get_tipo_display()
+            }
+        return None
 
     def get_posicion_origen_info(self, obj):
         if obj.posicion_origen:
             return {
+                'id': obj.posicion_origen.id,
                 'nombre': obj.posicion_origen.nombre,
-                'piso': obj.posicion_origen.piso
+                'piso': obj.posicion_origen.piso,
+                'sede': obj.posicion_origen.sede.nombre if obj.posicion_origen.sede else None
             }
         return None
 
     def get_posicion_destino_info(self, obj):
         if obj.posicion_destino:
             return {
+                'id': obj.posicion_destino.id,
                 'nombre': obj.posicion_destino.nombre,
-                'piso': obj.posicion_destino.piso
+                'piso': obj.posicion_destino.piso,
+                'sede': obj.posicion_destino.sede.nombre if obj.posicion_destino.sede else None
             }
         return None
 
     def get_encargado_info(self, obj):
         if obj.encargado:
             return {
-                'nombre': obj.encargado.nombre_completo,
-                'username': obj.encargado.user.username
+                'id': obj.encargado.id,
+                'nombre': obj.encargado.nombre,
+                'email': obj.encargado.email
+            }
+        return None
+
+    def get_sede_info(self, obj):
+        if obj.sede:
+            return {
+                'id': obj.sede.id,
+                'nombre': obj.sede.nombre
             }
         return None
 
     def validate(self, data):
-        if data.get('posicion_destino'):
-            if data['posicion_destino'].dispositivos.count() >= Posicion.MAX_DISPOSITIVOS:
+        """
+        Validaciones personalizadas para los movimientos al actualizar
+        """
+        instance = getattr(self, 'instance', None)
+        data = super().validate(data)
+        
+        # Validaciones específicas para actualización
+        if instance and self.context.get('request').method in ['PUT', 'PATCH']:
+            pos_destino = data.get('posicion_destino', instance.posicion_destino)
+            dispositivo = data.get('dispositivo', instance.dispositivo)
+            
+            # Verificar que no se mueva el dispositivo a la misma posición
+            if pos_destino and dispositivo.posicion == pos_destino:
                 raise serializers.ValidationError(
-                    {'posicion_destino': f'La posición ya tiene el máximo de {Posicion.MAX_DISPOSITIVOS} dispositivos'}
+                    {'posicion_destino': 'El dispositivo ya está en esta posición'}
                 )
+        
         return data
 
     def create(self, validated_data):
+        """
+        Sobreescribe el método create para asignar automáticamente el usuario logueado
+        """
         request = self.context.get('request')
-        if request and hasattr(request, 'user') and hasattr(request.user, 'roluser'):
-            validated_data['encargado'] = request.user.roluser
+        if request and hasattr(request, 'user'):
+            user = request.user
+            if hasattr(user, 'roluser'):
+                validated_data['encargado'] = user.roluser
         
         return super().create(validated_data)
