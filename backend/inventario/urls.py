@@ -102,6 +102,10 @@ urlpatterns = [
     
     path('api/dispositivos-por-sede/', views.dispositivos_por_sede, name='dispositivos-por-sede'),
     path('api/movimientos/<int:pk>/confirmar/', MovimientoViewSet.as_view({'post': 'confirmar_movimiento'}), name='movimiento-confirmar'),
+    
+    
+    #rutas para entrada y salida de dispositivos
+
 ]
 
 

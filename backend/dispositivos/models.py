@@ -3,20 +3,20 @@ from django.contrib.auth.models import AbstractUser # type: ignore
 from django.db.models.signals import post_save # type: ignore
 from django.dispatch import receiver # type: ignore
 from django.conf import settings # type: ignore
-from django.core.exceptions import ValidationError
-from django.core.validators import RegexValidator
+from django.core.exceptions import ValidationError # type: ignore
+from django.core.validators import RegexValidator # type: ignore
 import re
 from colorfield.fields import ColorField  # type: ignore
-from django.utils.translation import gettext_lazy as _
-from django.contrib.postgres.fields import JSONField
-from django.db.models.signals import post_save, pre_save, post_delete
-from django.db import transaction
-from django.contrib.auth.signals import user_logged_in
-from django.utils.timezone import now, timedelta
-from django.utils import timezone
+from django.utils.translation import gettext_lazy as _ # type: ignore
+from django.contrib.postgres.fields import JSONField # type: ignore
+from django.db.models.signals import post_save, pre_save, post_delete # type: ignore
+from django.db import transaction # type: ignore
+from django.contrib.auth.signals import user_logged_in # type: ignore
+from django.utils.timezone import now, timedelta # type: ignore
+from django.utils import timezone # type: ignore
 import logging
-from django.contrib.auth import get_user
-from django.db.models.signals import pre_delete
+from django.contrib.auth import get_user # type: ignore
+from django.db.models.signals import pre_delete # type: ignore
 
 
 class Sede(models.Model):
@@ -35,6 +35,7 @@ class RolUser(AbstractUser):
     ROLES_CHOICES = [
         ('admin', 'Administrador'),
         ('coordinador', 'Coordinador'),
+        ('celador', 'Celador'),
     ]
     
     rol = models.CharField(max_length=15, choices=ROLES_CHOICES, default='admin')
@@ -421,12 +422,12 @@ class Historial(models.Model):
         verbose_name_plural = "Historiales"
 
 
-from django.db import models
-from django.conf import settings
-from django.core.exceptions import ValidationError
-from django.db.models.signals import pre_save, post_save
-from django.dispatch import receiver
-from django.db import transaction
+from django.db import models # type: ignore
+from django.conf import settings # type: ignore
+from django.core.exceptions import ValidationError # type: ignore
+from django.db.models.signals import pre_save, post_save # type: ignore
+from django.dispatch import receiver # type: ignore
+from django.db import transaction # type: ignore
 import logging
 
 logger = logging.getLogger(__name__)
@@ -589,8 +590,8 @@ def guardar_estado_anterior(sender, instance, **kwargs):
 
 @receiver(post_save, sender=Dispositivo)
 def registrar_cambios_historial(sender, instance, created, **kwargs):
-    from django.contrib.auth import get_user
-    from django.core.exceptions import ObjectDoesNotExist
+    from django.contrib.auth import get_user # type: ignore
+    from django.core.exceptions import ObjectDoesNotExist # type: ignore
     
     try:
         request = kwargs.get('request', None)
@@ -716,3 +717,165 @@ def actualizar_posicion_despues_movimiento(sender, instance, created, **kwargs):
                 "posicion_nueva": instance.posicion_destino.id
             }
         )
+        
+        
+class Celador(RolUser):
+    """Extiende el modelo RolUser para el rol de celador"""
+    class Meta:
+        proxy = True
+        verbose_name = 'Celador'
+        verbose_name_plural = 'Celadores'
+
+    def save(self, *args, **kwargs):
+        self.rol = 'celador'
+        super().save(*args, **kwargs)
+
+from django.db import models
+from django.core.validators import MinLengthValidator
+
+class UsuarioExterno(models.Model):
+    """Modelo para usuarios externos que no están en el sistema de autenticación"""
+    TIPOS_DOCUMENTO = [
+        ('CC', 'Cédula de Ciudadanía'),
+        ('CE', 'Cédula de Extranjería'),
+        ('TI', 'Tarjeta de Identidad'),
+        ('PASAPORTE', 'Pasaporte'),
+    ]
+    
+    tipo_documento = models.CharField(max_length=10, choices=TIPOS_DOCUMENTO, default='CC')
+    documento = models.CharField(
+        max_length=20,
+        unique=True,
+        validators=[MinLengthValidator(5)],
+        help_text="Número de documento de identidad"
+    )
+    nombre_completo = models.CharField(max_length=150)
+    cargo = models.CharField(max_length=100)
+    empresa = models.CharField(max_length=100, blank=True, null=True)
+    telefono = models.CharField(max_length=15, blank=True, null=True)
+    email = models.EmailField(blank=True, null=True)
+    fecha_registro = models.DateTimeField(auto_now_add=True)
+    activo = models.BooleanField(default=True)
+    observaciones = models.TextField(blank=True, null=True)
+    
+    class Meta:
+        verbose_name = 'Usuario Externo'
+        verbose_name_plural = 'Usuarios Externos'
+        ordering = ['nombre_completo']
+    
+    def __str__(self):
+        return f"{self.nombre_completo} ({self.get_tipo_documento_display()} {self.documento})"
+
+class AsignacionDispositivo(models.Model):
+    """Modelo para asignar dispositivos a usuarios externos"""
+    ESTADOS = [
+        ('VIGENTE', 'Vigente'),
+        ('DEVUELTO', 'Devuelto'),
+        ('VENCIDO', 'Vencido'),
+    ]
+    
+    usuario = models.ForeignKey(UsuarioExterno, on_delete=models.CASCADE, related_name='asignaciones')
+    dispositivo = models.ForeignKey(Dispositivo, on_delete=models.CASCADE, related_name='asignaciones_externas')
+    fecha_asignacion = models.DateTimeField(auto_now_add=True)
+    fecha_devolucion = models.DateTimeField(null=True, blank=True)
+    estado = models.CharField(max_length=10, choices=ESTADOS, default='VIGENTE')
+    ubicacion_asignada = models.CharField(
+        max_length=20,
+        choices=Dispositivo.UBICACIONES,
+        default='CASA',
+        help_text="Ubicación donde se usará el dispositivo"
+    )
+    observaciones = models.TextField(blank=True, null=True)
+    asignado_por = models.ForeignKey(
+        'RolUser',  # Aquí sí usamos RolUser para saber quién hizo la asignación
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='asignaciones_realizadas'
+    )
+    
+    class Meta:
+        verbose_name = 'Asignación de Dispositivo'
+        verbose_name_plural = 'Asignaciones de Dispositivos'
+        ordering = ['-fecha_asignacion']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['usuario', 'dispositivo'],
+                condition=models.Q(estado='VIGENTE'),
+                name='unique_vigente_usuario_dispositivo'
+            )
+        ]
+    
+    def __str__(self):
+        return f"{self.dispositivo} asignado a {self.usuario} ({self.get_estado_display()})"
+    
+    def clean(self):
+        # Validar que el dispositivo no esté asignado a otro usuario
+        if self.estado == 'VIGENTE' and self.pk is None:
+            asignaciones_vigentes = AsignacionDispositivo.objects.filter(
+                dispositivo=self.dispositivo,
+                estado='VIGENTE'
+            ).exclude(pk=self.pk if self.pk else None)
+            
+            if asignaciones_vigentes.exists():
+                raise ValidationError("Este dispositivo ya está asignado a otro usuario")
+        
+        # Validar que la ubicación sea válida para asignación
+        if self.ubicacion_asignada not in ['CASA', 'CLIENTE']:
+            raise ValidationError("La ubicación asignada debe ser 'Casa' o 'Cliente' para asignaciones externas")
+
+class RegistroMovimientoDispositivo(models.Model):
+    """Modelo para registrar entradas y salidas de dispositivos asignados"""
+    TIPO_MOVIMIENTO = [
+        ('ENTRADA', 'Entrada'),
+        ('SALIDA', 'Salida'),
+    ]
+    
+    asignacion = models.ForeignKey(
+        AsignacionDispositivo,
+        on_delete=models.CASCADE,
+        related_name='movimientos'
+    )
+    tipo = models.CharField(max_length=7, choices=TIPO_MOVIMIENTO)
+    fecha = models.DateField(auto_now_add=True)
+    hora = models.TimeField(auto_now_add=True)
+    observaciones = models.TextField(blank=True, null=True)
+    registrado_por = models.ForeignKey(
+        'RolUser',
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='registros_movimientos'
+    )
+    
+    class Meta:
+        verbose_name = 'Registro de Movimiento'
+        verbose_name_plural = 'Registros de Movimientos'
+        ordering = ['-fecha', '-hora']
+    
+    def __str__(self):
+        return f"{self.get_tipo_display()} - {self.asignacion.dispositivo} - {self.fecha} {self.hora}"
+    
+    def clean(self):
+        # Validar que el movimiento sea coherente con el historial
+        ultimo_movimiento = RegistroMovimientoDispositivo.objects.filter(
+            asignacion=self.asignacion
+        ).order_by('-fecha', '-hora').first()
+        
+        if ultimo_movimiento:
+            if ultimo_movimiento.tipo == self.tipo:
+                raise ValidationError(
+                    f"No puede registrar dos {self.get_tipo_display().lower()}s consecutivas"
+                )
+
+@receiver(pre_save, sender=AsignacionDispositivo)
+def actualizar_estado_dispositivo(sender, instance, **kwargs):
+    """
+    Actualiza el estado del dispositivo cuando se asigna o devuelve
+    """
+    if instance.estado == 'VIGENTE':
+        instance.dispositivo.ubicacion = instance.ubicacion_asignada
+        instance.dispositivo.estado_uso = 'EN_USO'
+        instance.dispositivo.save()
+    elif instance.estado in ['DEVUELTO', 'VENCIDO']:
+        instance.dispositivo.ubicacion = 'SEDE'
+        instance.dispositivo.estado_uso = 'DISPONIBLE'
+        instance.dispositivo.save()

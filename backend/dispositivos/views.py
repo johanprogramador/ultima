@@ -5,18 +5,18 @@ import jwt # type: ignore
 import pandas as pd  # type: ignore
 from fuzzywuzzy import process  # type: ignore
 from django.conf import settings  # type: ignore
-from django.core.exceptions import ObjectDoesNotExist
+from django.core.exceptions import ObjectDoesNotExist # type: ignore
 from django.core.mail import send_mail  # type: ignore
-from django.db import IntegrityError, transaction
-from django.db.models import Count, ExpressionWrapper, F, FloatField, Q, Sum
-from django.http import JsonResponse
-from django.shortcuts import get_object_or_404, render
-from django.utils import timezone
-from django.views.decorators.cache import never_cache, cache_control
-from django.views.decorators.csrf import csrf_exempt
-from django.contrib.auth import authenticate, login as django_login
+from django.db import IntegrityError, transaction # type: ignore
+from django.db.models import Count, ExpressionWrapper, F, FloatField, Q, Sum # type: ignore
+from django.http import JsonResponse # type: ignore
+from django.shortcuts import get_object_or_404, render # type: ignore
+from django.utils import timezone # type: ignore
+from django.views.decorators.cache import never_cache, cache_control # type: ignore
+from django.views.decorators.csrf import csrf_exempt # type: ignore
+from django.contrib.auth import authenticate, login as django_login # type: ignore
 from django.contrib.auth.hashers import make_password  # type: ignore
-from django.contrib.auth.models import User
+from django.contrib.auth.models import User # type: ignore
 from django.contrib.auth.decorators import login_required  # type: ignore
 from rest_framework import viewsets, filters, status, generics # type: ignore
 from rest_framework.authentication import TokenAuthentication # type: ignore
@@ -217,7 +217,7 @@ def validate_token(request):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def obtener_datos_protegidos(request):
     return Response({"message": "Datos protegidos disponibles solo para usuarios autenticados"})
 @api_view(['GET'])
@@ -1178,7 +1178,7 @@ def dispositivo_choices(request):
 # vistas para los movimientos
     
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def dispositivos_disponibles_para_movimiento(request, sede_id):
     """Obtiene dispositivos disponibles para mover en una sede específica"""
     try:
@@ -1303,6 +1303,7 @@ class MovimientoViewSet(viewsets.ModelViewSet):
             )
             
             
+    @permission_classes([AllowAny])
     @action(detail=True, methods=['post'])
     def confirmar_movimiento(self, request, pk=None):
         """
@@ -1319,9 +1320,9 @@ class MovimientoViewSet(viewsets.ModelViewSet):
         dispositivo = movimiento.dispositivo
         posicion_destino = movimiento.posicion_destino
         
-        if not dispositivo or not posicion_destino:
+        if not dispositivo:
             return Response(
-                {"error": "Movimiento no tiene dispositivo o posición destino válidos"},
+                {"error": "Movimiento no tiene dispositivo asociado"},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
@@ -1332,12 +1333,23 @@ class MovimientoViewSet(viewsets.ModelViewSet):
                 if posicion_anterior:
                     posicion_anterior.dispositivos.remove(dispositivo)
                 
-                # 2. Agregar a nueva posición
-                posicion_destino.dispositivos.add(dispositivo)
+                # 2. Agregar a nueva posición si existe
+                if posicion_destino:
+                    # Verificar límite de dispositivos
+                    if posicion_destino.dispositivos.count() >= Posicion.MAX_DISPOSITIVOS:
+                        return Response(
+                            {"error": f"La posición destino ya tiene el máximo de {Posicion.MAX_DISPOSITIVOS} dispositivos"},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                    
+                    posicion_destino.dispositivos.add(dispositivo)
+                    dispositivo.posicion = posicion_destino
+                    dispositivo.sede = posicion_destino.sede if posicion_destino.sede else movimiento.sede
                 
-                # 3. Actualizar dispositivo
-                dispositivo.posicion = posicion_destino
-                dispositivo.sede = posicion_destino.sede if posicion_destino.sede else movimiento.sede
+                # 3. Si no hay posición destino, dejar el dispositivo sin posición
+                else:
+                    dispositivo.posicion = None
+                
                 dispositivo.save()
                 
                 # 4. Marcar movimiento como confirmado
@@ -1353,7 +1365,7 @@ class MovimientoViewSet(viewsets.ModelViewSet):
                     cambios={
                         "movimiento_id": movimiento.id,
                         "posicion_anterior": posicion_anterior.id if posicion_anterior else None,
-                        "posicion_nueva": posicion_destino.id
+                        "posicion_nueva": posicion_destino.id if posicion_destino else None
                     }
                 )
                 
@@ -1370,6 +1382,7 @@ class MovimientoViewSet(viewsets.ModelViewSet):
             )
 
     @action(detail=False, methods=['post'])
+    @permission_classes([AllowAny])
     def crear_movimiento_completo(self, request):
         """
         Endpoint especializado para creación de movimientos con validaciones completas:
@@ -1548,3 +1561,7 @@ class MovimientoViewSet(viewsets.ModelViewSet):
                 {'error': 'Error al obtener opciones de filtro'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+            
+            
+            
+# vistas para registro de entradas y salidas de dispositivos

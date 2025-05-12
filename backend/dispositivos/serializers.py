@@ -1,8 +1,8 @@
 from rest_framework import serializers # type: ignore
-from django.contrib.auth import authenticate
-from django.contrib.auth.hashers import make_password
-from django.utils.translation import gettext_lazy as _
-from django.db import transaction
+from django.contrib.auth import authenticate # type: ignore
+from django.contrib.auth.hashers import make_password # type: ignore
+from django.utils.translation import gettext_lazy as _ # type: ignore
+from django.db import transaction # type: ignore
 from .models import RolUser, Sede, Dispositivo, Servicios, Posicion, Historial, Movimiento
 
 class RolUserSerializer(serializers.ModelSerializer):
@@ -271,9 +271,9 @@ class ServiciosSerializer(serializers.ModelSerializer):
         fields = ['id', 'nombre', 'codigo_analitico', 'sedes', 'color']
 
 from rest_framework import serializers # type: ignore # type: ignore
-from django.db import transaction
+from django.db import transaction # type: ignore
 from .models import Posicion, Dispositivo, Movimiento
-from django.contrib.auth import get_user_model
+from django.contrib.auth import get_user_model # type: ignore
 
 User = get_user_model()
 
