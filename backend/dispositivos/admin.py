@@ -107,7 +107,6 @@ from .models import (
     UsuarioExterno,
     AsignacionDispositivo,
     RegistroMovimientoDispositivo,
-    Celador,
     Dispositivo
 )
 
@@ -227,12 +226,3 @@ class RegistroMovimientoDispositivoAdmin(admin.ModelAdmin):
 @admin.register(RegistroMovimientoDispositivo)
 class RegistroMovimientoDispositivoAdmin(RegistroMovimientoDispositivoAdmin):
     pass
-
-@admin.register(Celador)
-class CeladorAdmin(admin.ModelAdmin):
-    list_display = ('username', 'nombre', 'documento', 'email', 'is_active')
-    list_filter = ('is_active',)
-    search_fields = ('username', 'nombre', 'documento', 'email')
-    
-    def get_queryset(self, request):
-        return super().get_queryset(request).filter(rol='celador')

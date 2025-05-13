@@ -1029,7 +1029,7 @@ class PosicionRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView):
         instance.delete()
         return Response({"message": "Posici\u00f3n eliminada correctamente"}, status=status.HTTP_204_NO_CONTENT)
 
-@api_view(['GET'])
+@api_view(['GET', 'POST'])
 @permission_classes([AllowAny])
 def get_colores_pisos(request):
     return Response({
@@ -1110,7 +1110,7 @@ class HistorialViewSet(viewsets.ReadOnlyModelViewSet):
         })
 
 
-@api_view(['POST'])
+@api_view(['GET', 'POST'])
 @permission_classes([AllowAny])
 def refresh_token_view(request):
     try:
@@ -1130,7 +1130,7 @@ def refresh_token_view(request):
         return Response({'error': str(e)}, status=401)
 
         
-@api_view(['GET'])
+@api_view(['GET', 'POST'])
 @permission_classes([AllowAny])
 def dispositivos_por_sede(request):
     try:
@@ -1177,7 +1177,7 @@ def dispositivo_choices(request):
     
 # vistas para los movimientos
     
-@api_view(['GET'])
+@api_view(['GET', 'POST'])
 @permission_classes([AllowAny])
 def dispositivos_disponibles_para_movimiento(request, sede_id):
     """Obtiene dispositivos disponibles para mover en una sede específica"""
@@ -1304,7 +1304,7 @@ class MovimientoViewSet(viewsets.ModelViewSet):
             
             
     @permission_classes([AllowAny])
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['GET', 'POST'])
     def confirmar_movimiento(self, request, pk=None):
         """
         Endpoint para confirmar un movimiento y aplicar los cambios a las posiciones
@@ -1381,7 +1381,7 @@ class MovimientoViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-    @action(detail=False, methods=['post'])
+    @action(detail=False, methods=['GET', 'POST'])
     @permission_classes([AllowAny])
     def crear_movimiento_completo(self, request):
         """
@@ -1444,7 +1444,7 @@ class MovimientoViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['GET', 'POST'])
     def revertir(self, request, pk=None):
         """
         Revertir un movimiento existente:
@@ -1509,7 +1509,7 @@ class MovimientoViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=['GET', 'POST'])
     def resumen(self, request):
         """
         Resumen estadístico de movimientos:
@@ -1534,7 +1534,7 @@ class MovimientoViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=['GET', 'POST'])
     def opciones_filtro(self, request):
         """
         Devuelve opciones disponibles para filtrar movimientos:

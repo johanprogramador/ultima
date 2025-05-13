@@ -585,10 +585,7 @@ class HistorialSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Historial
-        fields = [
-            'id', 'dispositivo', 'usuario', 'fecha_modificacion', 
-            'fecha_formateada', 'tipo_cambio', 'tipo_cambio_display', 'cambios'
-        ]
+        fields = '__all__'
     
     def get_fecha_formateada(self, obj):
         return obj.fecha_modificacion.strftime("%d/%m/%Y %H:%M")
@@ -602,18 +599,10 @@ class MovimientoSerializer(serializers.ModelSerializer):
     posicion_destino_info = serializers.SerializerMethodField()
     encargado_info = serializers.SerializerMethodField()
     sede_info = serializers.SerializerMethodField()
-    confirmado = serializers.BooleanField(read_only=True)
-    fecha_confirmacion = serializers.DateTimeField(read_only=True)
 
     class Meta:
         model = Movimiento
-        fields = [
-            'id', 'fecha_movimiento', 'dispositivo', 'dispositivo_info',
-            'posicion_origen', 'posicion_origen_info', 'posicion_destino', 
-            'posicion_destino_info', 'encargado', 'encargado_info',
-            'observacion', 'sede', 'sede_info'
-            'confirmado', 'fecha_confirmacion'
-        ]
+        fields ='__all__'
         extra_kwargs = {
             'fecha_movimiento': {'read_only': True},
             'encargado': {'required': False}
@@ -668,20 +657,22 @@ class MovimientoSerializer(serializers.ModelSerializer):
 
     def validate(self, data):
         """
-        Validaciones personalizadas para los movimientos al actualizar
+        Validaciones personalizadas para los movimientos
         """
-        instance = getattr(self, 'instance', None)
-        data = super().validate(data)
+        pos_destino = data.get('posicion_destino')
         
-        # Validaciones específicas para actualización
-        if instance and self.context.get('request').method in ['PUT', 'PATCH']:
-            pos_destino = data.get('posicion_destino', instance.posicion_destino)
-            dispositivo = data.get('dispositivo', instance.dispositivo)
-            
-            # Verificar que no se mueva el dispositivo a la misma posición
-            if pos_destino and dispositivo.posicion == pos_destino:
+        if pos_destino:
+            # Verificar que la posición destino no esté llena
+            if pos_destino.dispositivos.count() >= Posicion.MAX_DISPOSITIVOS:
                 raise serializers.ValidationError(
-                    {'posicion_destino': 'El dispositivo ya está en esta posición'}
+                    {'posicion_destino': f'La posición ya tiene el máximo de {Posicion.MAX_DISPOSITIVOS} dispositivos'}
+                )
+            
+            # Verificar que dispositivo y posición destino pertenezcan a la misma sede
+            dispositivo = data.get('dispositivo')
+            if dispositivo and dispositivo.sede != pos_destino.sede:
+                raise serializers.ValidationError(
+                    {'posicion_destino': 'El dispositivo y la posición destino deben pertenecer a la misma sede'}
                 )
         
         return data
@@ -697,3 +688,6 @@ class MovimientoSerializer(serializers.ModelSerializer):
                 validated_data['encargado'] = user.roluser
         
         return super().create(validated_data)
+    
+    
+    

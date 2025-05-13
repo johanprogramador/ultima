@@ -102,7 +102,7 @@ WSGI_APPLICATION = 'inventario.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'prueba2',
+        'NAME': 'prueba3',
         'USER': 'postgres',
         'PASSWORD': 'password',
         'HOST': 'localhost',  # o la IP de tu servidor PostgreSQL

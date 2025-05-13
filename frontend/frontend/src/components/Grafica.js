@@ -183,7 +183,7 @@
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); /* Sombra para dar profundidad */
             color: #fff; /* Color del texto */
             width: 100%; /* Ocupa todo el ancho disponible */
-            max-width: 900px; /* Ancho máximo para la gráfica */
+             /* Ancho máximo para la gráfica */
             margin: 0; /* Elimina el margen negativo */
             }
             

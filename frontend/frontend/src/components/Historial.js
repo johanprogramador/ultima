@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/exhaustive-deps */
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
@@ -76,7 +77,7 @@ api.interceptors.response.use(
     } else {
       return Promise.reject(new Error(`Error al configurar la solicitud: ${error.message}`))
     }
-  }
+  },
 )
 
 const Historial = () => {
@@ -115,30 +116,44 @@ const Historial = () => {
   const [openDialog, setOpenDialog] = useState(false)
   const navigate = useNavigate()
 
+  // Función para debounce
+  const debounce = useCallback((func, delay) => {
+    let timer;
+    return function (...args) {
+      clearTimeout(timer);
+      timer = setTimeout(() => func.apply(this, args), delay);
+    };
+  }, []);
+
   // Función mejorada para manejar fechas undefined/null/vacías
-  const formatDateUTC = useCallback((dateString) => {
-    // Verificar todos los casos posibles de valores no válidos
-    if (dateString === undefined || dateString === null || 
-        dateString === '' || dateString === 'null' || 
-        dateString === 'undefined' || isNaN(new Date(dateString).getTime())) {
+  const formatDateUTC = useCallback((dateString, formattedDate) => {
+    if (formattedDate) {
+      return formattedDate
+    }
+
+    if (
+      dateString === undefined ||
+      dateString === null ||
+      dateString === "" ||
+      dateString === "null" ||
+      dateString === "undefined" ||
+      isNaN(new Date(dateString).getTime())
+    ) {
       return "No registrado"
     }
 
     try {
-      // Primero intentar con el formato exacto de la BD
-      let date = dayjs(dateString, 'YYYY-MM-DD HH:mm:ss.SSSZ', true)
-      
+      let date = dayjs(dateString, "YYYY-MM-DD HH:mm:ss.SSSZ", true)
+
       if (!date.isValid()) {
-        // Si falla, intentar parsear como ISO string
         date = dayjs(dateString)
-        
+
         if (!date.isValid()) {
           console.warn("Fecha inválida recibida:", dateString)
           return "Fecha inválida"
         }
       }
 
-      // Convertir a la zona horaria local para visualización
       return date.local().format("DD/MM/YYYY HH:mm:ss")
     } catch (error) {
       console.error("Error al procesar fecha:", dateString, error)
@@ -166,7 +181,7 @@ const Historial = () => {
         params: { sede_id: sedeId },
       })
 
-      setFilterOptions(prev => ({
+      setFilterOptions((prev) => ({
         ...prev,
         tipos_cambio: response.data.tipos_cambio || prev.tipos_cambio,
         dispositivos: response.data.dispositivos || [],
@@ -178,26 +193,24 @@ const Historial = () => {
     }
   }, [token, sedeId, handleError])
 
-  // Función para obtener datos del historial con manejo robusto de fechas
+  // Función para obtener datos del historial
   const fetchHistorial = useCallback(async () => {
     setLoading(true)
     setError(null)
-    
+
     try {
       const params = {
         page: pagination.page,
         page_size: pagination.pageSize,
         ...filters,
-        fecha_inicio: filters.fecha_inicio 
-          ? dayjs(filters.fecha_inicio).startOf('day').format('YYYY-MM-DDTHH:mm:ss')
+        fecha_inicio: filters.fecha_inicio
+          ? dayjs(filters.fecha_inicio).startOf("day").format("YYYY-MM-DDTHH:mm:ss")
           : null,
-        fecha_fin: filters.fecha_fin 
-          ? dayjs(filters.fecha_fin).endOf('day').format('YYYY-MM-DDTHH:mm:ss')
-          : null,
+        fecha_fin: filters.fecha_fin ? dayjs(filters.fecha_fin).endOf("day").format("YYYY-MM-DDTHH:mm:ss") : null,
       }
 
       // Limpiar parámetros vacíos
-      Object.keys(params).forEach(key => {
+      Object.keys(params).forEach((key) => {
         if (params[key] === null || params[key] === "" || params[key] === undefined) {
           delete params[key]
         }
@@ -208,33 +221,23 @@ const Historial = () => {
         params,
       })
 
-      // Validación robusta de datos
-      const validatedData = response.data.results.map(item => {
-        // Usar el campo correcto (fecha o fechatam)
+      const validatedData = response.data.results.map((item) => {
         const fechaValue = item.fecha !== undefined ? item.fecha : item.fechatam
-        
-        // Debug para verificar datos recibidos
-        console.log("Procesando item:", {
-          id: item.id,
-          fechaRaw: fechaValue,
-          tipo: typeof fechaValue,
-          formatted: formatDateUTC(fechaValue)
-        })
 
         return {
           ...item,
-          fecha: fechaValue, // Usar el valor del campo correcto
+          fecha: fechaValue,
+          fecha_formateada: item.fecha_formateada,
           cambios: item.cambios || "No hay datos de cambios",
           tipo_cambio: item.tipo_cambio || "DESCONOCIDO",
         }
       })
 
       setHistorial(validatedData)
-      setPagination(prev => ({
+      setPagination((prev) => ({
         ...prev,
         totalItems: response.data.count,
       }))
-
     } catch (err) {
       handleError(err, "cargando historial")
       setHistorial([])
@@ -243,22 +246,51 @@ const Historial = () => {
     }
   }, [pagination.page, pagination.pageSize, filters, token, handleError, formatDateUTC])
 
+  // Versión debounced de fetchHistorial
+  const debouncedFetchHistorial = useCallback(
+    debounce(() => {
+      fetchHistorial();
+    }, 300),
+    [fetchHistorial]
+  );
+
   useEffect(() => {
     fetchFilterOptions()
   }, [fetchFilterOptions])
 
   useEffect(() => {
-    fetchHistorial()
+    const abortController = new AbortController();
+    
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        await fetchHistorial();
+      } catch (error) {
+        handleError(error);
+      }
+    };
+    
+    fetchData();
+    
+    return () => {
+      abortController.abort();
+    };
   }, [fetchHistorial])
 
   const handlePageChange = (event, newPage) => {
-    setPagination(prev => ({ ...prev, page: newPage }))
+    setPagination((prev) => ({ ...prev, page: newPage }))
   }
 
   const handleFilterChange = (name, value) => {
-    setFilters(prev => ({ ...prev, [name]: value }))
-    setPagination(prev => ({ ...prev, page: 1 }))
+    setFilters((prev) => ({ ...prev, [name]: value }))
+    setPagination((prev) => ({ ...prev, page: 1 }))
+    debouncedFetchHistorial();
   }
+
+  const handleDispositivoChange = (e) => {
+    const dispositivoId = e.target.value;
+    handleFilterChange("dispositivo", dispositivoId);
+  };
 
   const resetFilters = () => {
     setFilters({
@@ -276,17 +308,23 @@ const Historial = () => {
   }
 
   const handleCloseSnackbar = () => {
-    setSnackbar(prev => ({ ...prev, open: false }))
+    setSnackbar((prev) => ({ ...prev, open: false }))
   }
 
   const getBadgeColor = (tipo) => {
     switch (tipo) {
-      case "MOVIMIENTO": return "primary"
-      case "MODIFICACION": return "warning"
-      case "ASIGNACION": return "success"
-      case "LOGIN": return "info"
-      case "ELIMINACION": return "error"
-      default: return "default"
+      case "MOVIMIENTO":
+        return "primary"
+      case "MODIFICACION":
+        return "warning"
+      case "ASIGNACION":
+        return "success"
+      case "LOGIN":
+        return "info"
+      case "ELIMINACION":
+        return "error"
+      default:
+        return "default"
     }
   }
 
@@ -316,11 +354,11 @@ const Historial = () => {
             </div>
           )
         }
-        
+
         return Object.entries(changes).map(([field, values]) => (
           <div key={field} style={{ marginBottom: 8 }}>
             <strong>{field.replace(/_/g, " ").toUpperCase()}:</strong>
-            {typeof values === 'object' ? (
+            {typeof values === "object" ? (
               <div style={{ marginLeft: 16 }}>
                 {Object.entries(values).map(([key, val]) => (
                   <div key={key}>
@@ -334,7 +372,7 @@ const Historial = () => {
           </div>
         ))
       }
-      
+
       return JSON.stringify(changes, null, 2)
     } catch (e) {
       console.error("Error formateando cambios:", e)
@@ -349,9 +387,9 @@ const Historial = () => {
           open={snackbar.open}
           autoHideDuration={6000}
           onClose={handleCloseSnackbar}
-          anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+          anchorOrigin={{ vertical: "top", horizontal: "center" }}
         >
-          <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }}>
+          <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: "100%" }}>
             {snackbar.message}
           </Alert>
         </Snackbar>
@@ -360,12 +398,7 @@ const Historial = () => {
           <Typography variant="h4" component="h1">
             Historial del Sistema
           </Typography>
-          <Button 
-            variant="outlined" 
-            startIcon={<ArrowBack />} 
-            onClick={() => navigate(-1)} 
-            sx={{ ml: 2 }}
-          >
+          <Button variant="outlined" startIcon={<ArrowBack />} onClick={() => navigate(-1)} sx={{ ml: 2 }}>
             Volver
           </Button>
         </Box>
@@ -421,11 +454,11 @@ const Historial = () => {
                 <Select
                   labelId="dispositivo-label"
                   value={filters.dispositivo}
-                  onChange={(e) => handleFilterChange("dispositivo", e.target.value)}
+                  onChange={handleDispositivoChange}
                   label="Dispositivo"
                   disabled={loading || filterOptions.dispositivos.length === 0}
                 >
-                  <MenuItem value="">Todos</MenuItem>
+                  <MenuItem value="">Todos los dispositivos</MenuItem>
                   {filterOptions.dispositivos.map((dispositivo) => (
                     <MenuItem key={dispositivo.id} value={dispositivo.id}>
                       {dispositivo.marca} {dispositivo.modelo} ({dispositivo.serial})
@@ -437,25 +470,15 @@ const Historial = () => {
 
             <Grid item xs={12}>
               <Box sx={{ display: "flex", gap: 2 }}>
-                <Button 
-                  variant="contained" 
-                  startIcon={<FilterList />} 
-                  onClick={fetchHistorial} 
-                  disabled={loading}
-                >
+                <Button variant="contained" startIcon={<FilterList />} onClick={fetchHistorial} disabled={loading}>
                   {loading ? "Cargando..." : "Aplicar Filtros"}
                 </Button>
-                <Button 
-                  variant="outlined" 
-                  startIcon={<Clear />} 
-                  onClick={resetFilters} 
-                  disabled={loading}
-                >
+                <Button variant="outlined" startIcon={<Clear />} onClick={resetFilters} disabled={loading}>
                   Limpiar Filtros
                 </Button>
-                <Button 
-                  variant="text" 
-                  startIcon={<Refresh />} 
+                <Button
+                  variant="text"
+                  startIcon={<Refresh />}
                   onClick={() => {
                     fetchFilterOptions()
                     fetchHistorial()
@@ -496,12 +519,7 @@ const Historial = () => {
                       <Alert
                         severity="error"
                         action={
-                          <Button 
-                            color="inherit" 
-                            size="small" 
-                            onClick={fetchHistorial} 
-                            startIcon={<Refresh />}
-                          >
+                          <Button color="inherit" size="small" onClick={fetchHistorial} startIcon={<Refresh />}>
                             Reintentar
                           </Button>
                         }
@@ -520,8 +538,8 @@ const Historial = () => {
                   historial.map((item) => (
                     <TableRow key={item.id} hover>
                       <TableCell>
-                        <Tooltip title={`Fecha original: ${item.fecha || 'No disponible'}`}>
-                          <span>{formatDateUTC(item.fecha)}</span>
+                        <Tooltip title={`Fecha original: ${item.fecha || "No disponible"}`}>
+                          <span>{formatDateUTC(item.fecha, item.fecha_formateada)}</span>
                         </Tooltip>
                       </TableCell>
                       <TableCell>
@@ -555,11 +573,15 @@ const Historial = () => {
                       </TableCell>
                       <TableCell>
                         <Tooltip title="Ver detalles">
-                          <IconButton 
-                            onClick={() => handleOpenDetails(item)} 
+                          <IconButton
+                            onClick={() => handleOpenDetails(item)}
                             disabled={!item.cambios || item.cambios === "No hay datos de cambios"}
                           >
-                            <Visibility color={item.cambios && item.cambios !== "No hay datos de cambios" ? "primary" : "disabled"} />
+                            <Visibility
+                              color={
+                                item.cambios && item.cambios !== "No hay datos de cambios" ? "primary" : "disabled"
+                              }
+                            />
                           </IconButton>
                         </Tooltip>
                       </TableCell>
@@ -585,13 +607,7 @@ const Historial = () => {
           )}
         </Paper>
 
-        <Dialog 
-          open={openDialog} 
-          onClose={() => setOpenDialog(false)} 
-          maxWidth="md" 
-          fullWidth 
-          scroll="paper"
-        >
+        <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="md" fullWidth scroll="paper">
           <DialogTitle>Detalles del Registro</DialogTitle>
           <DialogContent dividers>
             {selectedItem && (
@@ -602,10 +618,10 @@ const Historial = () => {
                   </Typography>
                   <Box sx={{ mb: 2 }}>
                     <Typography>
-                      <strong>Fecha:</strong> {formatDateUTC(selectedItem.fecha)}
+                      <strong>Fecha:</strong> {formatDateUTC(selectedItem.fecha, selectedItem.fecha_formateada)}
                     </Typography>
                     <Typography>
-                      <strong>Fecha original:</strong> {selectedItem.fecha || 'No disponible'}
+                      <strong>Fecha original:</strong> {selectedItem.fecha || "No disponible"}
                     </Typography>
                     <Typography sx={{ display: "flex", alignItems: "center", mt: 1 }}>
                       <strong>Tipo:</strong>
@@ -669,19 +685,13 @@ const Historial = () => {
                   <Typography variant="h6" gutterBottom>
                     Cambios Realizados
                   </Typography>
-                  <Paper sx={{ p: 2, backgroundColor: "#f5f5f5" }}>
-                    {formatChanges(selectedItem.cambios)}
-                  </Paper>
+                  <Paper sx={{ p: 2, backgroundColor: "#f5f5f5" }}>{formatChanges(selectedItem.cambios)}</Paper>
                 </Grid>
               </Grid>
             )}
           </DialogContent>
           <DialogActions>
-            <Button 
-              onClick={() => setOpenDialog(false)} 
-              variant="contained"
-              color="primary"
-            >
+            <Button onClick={() => setOpenDialog(false)} variant="contained" color="primary">
               Cerrar
             </Button>
           </DialogActions>
