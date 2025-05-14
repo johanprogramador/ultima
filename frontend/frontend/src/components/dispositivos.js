@@ -21,7 +21,6 @@ import {
 import * as XLSX from "xlsx"
 import "../styles/Devices.css"
 
-// Componente principal
 const Dispositivos = () => {
   const [dispositivos, setDispositivos] = useState([])
   const [filteredDispositivos, setFilteredDispositivos] = useState([])
@@ -37,8 +36,18 @@ const Dispositivos = () => {
     message: "",
     type: "error",
   })
+  const [confirmAlert, setConfirmAlert] = useState({
+    show: false,
+    message: "",
+    onConfirm: null,
+    onCancel: null,
+  })
+  const [searchTerm, setSearchTerm] = useState("")
+  const [currentPage, setCurrentPage] = useState(1)
+  const [itemsPerPage] = useState(10)
+  const [totalPages, setTotalPages] = useState(1)
 
-  // Definición de opciones según el modelo Django
+  // Opciones de selección
   const tiposDispositivos = [
     { value: 'COMPUTADOR', label: 'Computador' },
     { value: 'DESKTOP', label: 'Desktop' },
@@ -157,21 +166,6 @@ const Dispositivos = () => {
     { value: 'INHABILITADO', label: 'Inhabilitado' },
   ]
 
-  // Estado para alertas de confirmación
-  const [confirmAlert, setConfirmAlert] = useState({
-    show: false,
-    message: "",
-    onConfirm: null,
-    onCancel: null,
-  })
-
-  // Estados para búsqueda y paginación
-  const [searchTerm, setSearchTerm] = useState("")
-  const [currentPage, setCurrentPage] = useState(1)
-  const [itemsPerPage] = useState(10)
-  const [totalPages, setTotalPages] = useState(1)
-
-  // Estado inicial de un dispositivo
   function initialDeviceState() {
     return {
       tipo: "",
@@ -198,7 +192,6 @@ const Dispositivos = () => {
     }
   }
 
-  // Obtener la lista de dispositivos
   const fetchDispositivos = async () => {
     try {
       const response = await axios.get("http://127.0.0.1:8000/api/dispositivos/")
@@ -224,7 +217,6 @@ const Dispositivos = () => {
     }
   }
 
-  // Obtener las posiciones
   const fetchPosiciones = async () => {
     try {
       const response = await axios.get("http://127.0.0.1:8000/api/posiciones/")
@@ -240,7 +232,6 @@ const Dispositivos = () => {
     }
   }
 
-  // Obtener las sedes
   const fetchSedes = async () => {
     try {
       const response = await axios.get("http://127.0.0.1:8000/api/sede/")
@@ -255,7 +246,6 @@ const Dispositivos = () => {
     }
   }
 
-  // Obtener los usuarios
   const fetchUsuarios = async () => {
     try {
       const response = await axios.get("http://127.0.0.1:8000/api/usuarios/")
@@ -270,9 +260,7 @@ const Dispositivos = () => {
     }
   }
 
-  // Aplicar filtros a los dispositivos
   const applyFilters = (devicesData = dispositivos) => {
-    // Asegurarse de que devicesData es un array
     let filtered = Array.isArray(devicesData) ? [...devicesData] : []
 
     if (searchTerm) {
@@ -292,21 +280,19 @@ const Dispositivos = () => {
     setTotalPages(Math.ceil(filtered.length / itemsPerPage))
   }
 
-  // Obtener los dispositivos para la página actual
   const getCurrentPageItems = () => {
     const startIndex = (currentPage - 1) * itemsPerPage
     const endIndex = startIndex + itemsPerPage
     return filteredDispositivos.slice(startIndex, endIndex)
   }
 
-  // Calcular el rango de elementos mostrados
   const getItemRange = () => {
     const startItem = (currentPage - 1) * itemsPerPage + 1
     const endItem = Math.min(startItem + itemsPerPage - 1, filteredDispositivos.length)
     return `Mostrando ${startItem} a ${endItem} de ${filteredDispositivos.length} resultados`
   }
 
-  const validateDevice = (device) => {
+  function validateDevice(device) {
     if (!device.modelo || !device.serial) {
       setAlert({
         show: true,
@@ -315,23 +301,28 @@ const Dispositivos = () => {
       })
       return false
     }
+
+    if ((device.estado === 'MALO' || device.estado === 'MALA') && device.estado_uso !== 'INHABILITADO') {
+      setAlert({
+        show: true,
+        message: "Cuando el estado del dispositivo es 'Malo', el estado de uso debe ser 'Inhabilitado'.",
+        type: "error",
+      })
+      return false
+    }
+
     return true
   }
 
-  // Crear un nuevo dispositivo
   const addDevice = async () => {
     if (!validateDevice(newDevice)) return
 
     try {
-      // Limpiar datos antes de enviar
       const deviceToSend = { ...newDevice }
-
-      // Convertir IDs a números o eliminarlos si son null/undefined
       deviceToSend.posicion = deviceToSend.posicion ? Number(deviceToSend.posicion) : null
       deviceToSend.sede = deviceToSend.sede ? Number(deviceToSend.sede) : null
       deviceToSend.usuario_asignado = deviceToSend.usuario_asignado ? Number(deviceToSend.usuario_asignado) : null
 
-      // Eliminar campos vacíos
       Object.keys(deviceToSend).forEach((key) => {
         if (deviceToSend[key] === "" || deviceToSend[key] === null) {
           delete deviceToSend[key]
@@ -355,8 +346,17 @@ const Dispositivos = () => {
       let errorMessage = "Hubo un error al agregar el dispositivo."
 
       if (error.response?.data) {
-        // Mostrar mensajes específicos del backend si existen
-        errorMessage = Object.values(error.response.data).flat().join(", ")
+        if (error.response.data.details) {
+          errorMessage = Object.entries(error.response.data.details)
+            .map(([field, errors]) => `${field}: ${errors.join(', ')}`)
+            .join('\n')
+        } else if (error.response.data.error) {
+          errorMessage = error.response.data.error
+        } else if (typeof error.response.data === 'string') {
+          errorMessage = error.response.data
+        } else if (Array.isArray(error.response.data)) {
+          errorMessage = error.response.data.join('\n')
+        }
       }
 
       setAlert({
@@ -367,15 +367,12 @@ const Dispositivos = () => {
     }
   }
 
-  // Actualizar un dispositivo
   const updateDevice = async () => {
     if (!validateDevice(selectedDevice)) return
 
     try {
-      // Clonar el dispositivo y limpiar los datos incorrectos
       const cleanDeviceData = { ...selectedDevice }
 
-      // Limpiar campos de relaciones si están vacíos
       if (!cleanDeviceData.posicion) {
         delete cleanDeviceData.posicion
       } else {
@@ -388,32 +385,48 @@ const Dispositivos = () => {
         cleanDeviceData.sede = Number.parseInt(cleanDeviceData.sede)
       }
 
-      // Eliminar usuario_asignado si no es necesario en el backend
       if (!cleanDeviceData.usuario_asignado) {
         delete cleanDeviceData.usuario_asignado
       } else {
         cleanDeviceData.usuario_asignado = Number.parseInt(cleanDeviceData.usuario_asignado)
       }
 
-      await axios.put(`http://127.0.0.1:8000/api/dispositivos/${selectedDevice.id}/`, cleanDeviceData)
-      fetchDispositivos()
-      setShowDetailModal(false)
-      setAlert({
-        show: true,
-        message: "Dispositivo actualizado exitosamente.",
-        type: "success",
-      })
+      const response = await axios.put(
+        `http://127.0.0.1:8000/api/dispositivos/${selectedDevice.id}/`,
+        cleanDeviceData
+      )
+
+      if (response.status === 200) {
+        fetchDispositivos()
+        setShowDetailModal(false)
+        setAlert({
+          show: true,
+          message: "Dispositivo actualizado exitosamente.",
+          type: "success",
+        })
+      }
     } catch (error) {
-      console.error("Error al actualizar el dispositivo:", error.response?.data || error)
+      console.error("Error al actualizar el dispositivo:", error)
+      let errorMessage = "Error al actualizar el dispositivo."
+
+      if (error.response?.data) {
+        if (error.response.data.details) {
+          errorMessage = Object.entries(error.response.data.details)
+            .map(([field, errors]) => `${field}: ${errors.join(', ')}`)
+            .join('\n')
+        } else if (error.response.data.error) {
+          errorMessage = error.response.data.error
+        }
+      }
+
       setAlert({
         show: true,
-        message: "Error al actualizar el dispositivo. Verifique los datos.",
+        message: errorMessage,
         type: "error",
       })
     }
   }
 
-  // Eliminar un dispositivo
   const deleteDevice = async (deviceId) => {
     try {
       const response = await axios.delete(`http://127.0.0.1:8000/api/dispositivos/${deviceId}/`)
@@ -442,7 +455,6 @@ const Dispositivos = () => {
     }
   }
 
-  // Confirmar eliminación
   const confirmDelete = (deviceId) => {
     setConfirmAlert({
       show: true,
@@ -455,20 +467,18 @@ const Dispositivos = () => {
     })
   }
 
-  // Confirmar guardar cambios
-  const confirmSaveChanges = (deviceId, updatedDeviceData) => {
+  const confirmSaveChanges = () => {
     setConfirmAlert({
       show: true,
       message: "¿Deseas guardar los cambios realizados?",
       onConfirm: () => {
-        updateDevice(deviceId, updatedDeviceData)
+        updateDevice()
         setConfirmAlert({ ...confirmAlert, show: false })
       },
       onCancel: () => setConfirmAlert({ ...confirmAlert, show: false }),
     })
   }
 
-  // Obtener el ícono según el tipo de dispositivo
   const getDeviceIcon = (tipo) => {
     switch (tipo) {
       case "COMPUTADOR":
@@ -492,12 +502,9 @@ const Dispositivos = () => {
     }
   }
 
-  // Función para exportar a Excel
   const exportToExcel = () => {
     try {
-      // Preparar los datos para exportar
       const dataToExport = filteredDispositivos.map((device) => {
-        // Buscar nombres de relaciones
         const posicionNombre = posiciones.find((p) => p.id === device.posicion)?.nombre || ""
         const sedeNombre = sedes.find((s) => s.id === device.sede)?.nombre || ""
         const usuarioNombre = usuarios.find((u) => u.id === device.usuario_asignado)
@@ -529,14 +536,10 @@ const Dispositivos = () => {
         }
       })
 
-      // Crear una hoja de trabajo
       const worksheet = XLSX.utils.json_to_sheet(dataToExport)
-
-      // Crear un libro de trabajo
       const workbook = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(workbook, worksheet, "Dispositivos")
 
-      // Generar el archivo Excel
       const date = new Date().toISOString().slice(0, 10)
       XLSX.writeFile(workbook, `Reporte_Dispositivos_${date}.xlsx`)
 
@@ -555,7 +558,6 @@ const Dispositivos = () => {
     }
   }
 
-  // Efecto para cargar datos iniciales
   useEffect(() => {
     const fetchData = async () => {
       await fetchDispositivos()
@@ -566,23 +568,20 @@ const Dispositivos = () => {
     fetchData()
   }, [])
 
-  // Efecto para aplicar filtros cuando cambia el término de búsqueda
   useEffect(() => {
     applyFilters()
     setCurrentPage(1)
   }, [searchTerm])
 
-  // Efecto para cerrar la alerta automáticamente
   useEffect(() => {
     if (alert.show) {
       const timer = setTimeout(() => {
         setAlert({ ...alert, show: false })
-      }, 3000)
+      }, 5000)
       return () => clearTimeout(timer)
     }
   }, [alert])
 
-  // Manejador para cerrar el modal cuando se hace clic fuera de él
   const handleOverlayClick = (e) => {
     if (e.target === e.currentTarget) {
       setShowDetailModal(false)
@@ -590,13 +589,18 @@ const Dispositivos = () => {
     }
   }
 
-  // Componente de alerta
   const AlertModal = ({ message, type, onClose }) => {
     return (
       <div className="modal-overlay">
         <div className="modal-container alert-container">
           <div className={`alert-modal ${type}`}>
-            <p>{message}</p>
+            {typeof message === 'string' ? (
+              message.split('\n').map((line, i) => (
+                <p key={i}>{line}</p>
+              ))
+            ) : (
+              <p>{JSON.stringify(message)}</p>
+            )}
             <button className="close-button" onClick={onClose}>
               &times;
             </button>
@@ -606,7 +610,6 @@ const Dispositivos = () => {
     )
   }
 
-  // Componente de alerta de confirmación
   const ConfirmAlert = ({ message, onConfirm, onCancel }) => {
     return (
       <div className="alert-overlay">
@@ -623,6 +626,193 @@ const Dispositivos = () => {
             </div>
           </div>
         </div>
+      </div>
+    )
+  }
+
+  const DeviceList = ({ dispositivos, setSelectedDevice, setShowDetailModal, deleteDevice, getDeviceIcon }) => (
+    <div className="user-list">
+      {dispositivos.length > 0 ? (
+        dispositivos.map((device) => (
+          <div key={device.id} className="user-item">
+            <div className="user-avatar">{getDeviceIcon(device.tipo)}</div>
+            <div
+              className="user-info"
+              onClick={() => {
+                setSelectedDevice(device)
+                setShowDetailModal(true)
+              }}
+            >
+              <div className="user-name">
+                {device.tipo} - {device.marca} {device.modelo}
+              </div>
+              <div className="user-access">Serial: {device.serial}</div>
+              <div className="user-details">
+                <span>Estado: {device.estado} </span>
+                {device.placa_cu && <span> Placa: {device.placa_cu}</span>}
+              </div>
+            </div>
+            <div className="user-actions">
+              <button
+                className="action-button-modern edit"
+                onClick={() => {
+                  setSelectedDevice(device)
+                  setShowDetailModal(true)
+                }}
+              >
+                <FaEdit />
+              </button>
+              <button className="action-button-modern delete" onClick={() => confirmDelete(device.id)}>
+                <FaTrash />
+              </button>
+            </div>
+          </div>
+        ))
+      ) : (
+        <p className="no-results">No hay dispositivos disponibles.</p>
+      )}
+    </div>
+  )
+
+  const DeviceForm = ({
+    device,
+    setDevice,
+    onSubmit,
+    posiciones,
+    sedes,
+    usuarios,
+    tiposDispositivos,
+    fabricantes,
+    estadosDispositivo,
+    estadosUso,
+    sistemasOperativos,
+    procesadores,
+    ubicaciones,
+    razonesSociales,
+    estadosPropiedad,
+    capacidadesMemoriaRam,
+    capacidadesDiscoDuro,
+  }) => {
+    useEffect(() => {
+      if ((device.estado === 'MALO' || device.estado === 'MALA') && device.estado_uso !== 'INHABILITADO') {
+        setDevice(prev => ({ ...prev, estado_uso: 'INHABILITADO' }))
+      }
+    }, [device.estado, setDevice])
+
+    const renderInput = (label, field) => (
+      <div className="input-group">
+        <label>{label}</label>
+        <input
+          type="text"
+          value={device[field] || ""}
+          onChange={(e) => setDevice({ ...device, [field]: e.target.value })}
+          placeholder={label}
+          required={label.includes("*")}
+        />
+      </div>
+    )
+
+    const renderSelect = (label, field, options) => {
+      const isDisabled = (field === 'estado_uso' && 
+                         (device.estado === 'MALO' || device.estado === 'MALA'))
+      
+      return (
+        <div className="input-group">
+          <label>{label}</label>
+          <select
+            value={device[field] || ""}
+            onChange={(e) => setDevice({ ...device, [field]: e.target.value || null })}
+            required={label.includes("*")}
+            disabled={isDisabled}
+          >
+            <option value="">Seleccione una opción</option>
+            {options.map((opt) => (
+              <option 
+                key={opt.value} 
+                value={opt.value}
+                disabled={opt.disabled}
+              >
+                {opt.label}
+              </option>
+            ))}
+          </select>
+          {isDisabled && (
+            <p className="field-note">Automáticamente inhabilitado para dispositivos en mal estado</p>
+          )}
+        </div>
+      )
+    }
+
+    return (
+      <div className="device-form">
+        <div className="form-columns">
+          <div className="form-column">
+            {renderSelect("Tipo*", "tipo", tiposDispositivos)}
+            {renderSelect("Marca*", "marca", fabricantes)}
+            {renderInput("Modelo*", "modelo")}
+            {renderInput("Serial*", "serial")}
+            {renderInput("Placa CU", "placa_cu")}
+            {renderSelect("Estado*", "estado", estadosDispositivo)}
+            {renderSelect("Estado de Uso", "estado_uso", estadosUso.map(estado => ({
+              ...estado,
+              disabled: (device.estado === 'MALO' || device.estado === 'MALA') && 
+                        estado.value !== 'INHABILITADO'
+            })))}
+            {renderSelect("Sistema Operativo", "sistema_operativo", sistemasOperativos)}
+            {renderSelect("Procesador", "procesador", procesadores)}
+          </div>
+
+          <div className="form-column">
+            {renderSelect("Capacidad Memoria RAM", "capacidad_memoria_ram", capacidadesMemoriaRam)}
+            {renderSelect("Capacidad Disco Duro", "capacidad_disco_duro", capacidadesDiscoDuro)}
+            {renderSelect("Ubicación", "ubicacion", ubicaciones)}
+            {renderSelect("Razón Social", "razon_social", razonesSociales)}
+            {renderInput("Régimen", "regimen")}
+            {renderSelect("Estado Propiedad", "estado_propiedad", estadosPropiedad)}
+            {renderInput("Proveedor", "proveedor")}
+            {renderInput("Piso", "piso")}
+          </div>
+
+          <div className="form-column">
+            {renderSelect(
+              "Posición",
+              "posicion",
+              posiciones.map((pos) => ({
+                value: pos.id,
+                label: pos.nombre,
+              })),
+            )}
+            {renderSelect(
+              "Sede",
+              "sede",
+              sedes.map((sede) => ({
+                value: sede.id,
+                label: sede.nombre,
+              })),
+            )}
+            {renderSelect(
+              "Usuario Asignado",
+              "usuario_asignado",
+              usuarios.map((user) => ({
+                value: user.id,
+                label: `${user.nombre} ${user.apellido}`,
+              })),
+            )}
+            <div className="input-group">
+              <label>Observaciones</label>
+              <textarea
+                value={device.observaciones || ""}
+                onChange={(e) => setDevice({ ...device, observaciones: e.target.value })}
+                placeholder="Observaciones adicionales"
+                rows="3"
+              />
+            </div>
+          </div>
+        </div>
+
+        <button className="create-button" onClick={onSubmit}>
+          {device.id ? "Guardar cambios" : "Agregar Dispositivo"}
+        </button>
       </div>
     )
   }
@@ -644,12 +834,10 @@ const Dispositivos = () => {
           </div>
         </div>
 
-        {/* Mensajes de alerta */}
         {alert.show && (
           <AlertModal message={alert.message} type={alert.type} onClose={() => setAlert({ ...alert, show: false })} />
         )}
 
-        {/* Alerta de confirmación */}
         {confirmAlert.show && (
           <ConfirmAlert
             message={confirmAlert.message}
@@ -658,7 +846,6 @@ const Dispositivos = () => {
           />
         )}
 
-        {/* Buscador */}
         <div className="search-container">
           <div className="search-input-container">
             <FaSearch className="search-icon" />
@@ -672,7 +859,6 @@ const Dispositivos = () => {
           </div>
         </div>
 
-        {/* Lista de dispositivos */}
         <DeviceList
           dispositivos={getCurrentPageItems()}
           setSelectedDevice={setSelectedDevice}
@@ -681,7 +867,6 @@ const Dispositivos = () => {
           getDeviceIcon={getDeviceIcon}
         />
 
-        {/* Paginación */}
         {filteredDispositivos.length > 0 && (
           <div className="pagination-container">
             <div className="pagination-info">{getItemRange()}</div>
@@ -706,7 +891,6 @@ const Dispositivos = () => {
           </div>
         )}
 
-        {/* Modal para agregar dispositivo */}
         {showForm && (
           <div className="modal-overlay" onClick={handleOverlayClick}>
             <div className="modal-container modern-modal" onClick={(e) => e.stopPropagation()}>
@@ -739,7 +923,6 @@ const Dispositivos = () => {
           </div>
         )}
 
-        {/* Modal para editar dispositivo */}
         {showDetailModal && selectedDevice && (
           <div className="modal-overlay" onClick={handleOverlayClick}>
             <div className="modal-container modern-modal" onClick={(e) => e.stopPropagation()}>
@@ -751,7 +934,7 @@ const Dispositivos = () => {
                 <DeviceForm
                   device={selectedDevice}
                   setDevice={setSelectedDevice}
-                  onSubmit={() => confirmSaveChanges(selectedDevice.id, selectedDevice)}
+                  onSubmit={confirmSaveChanges}
                   posiciones={posiciones}
                   sedes={sedes}
                   usuarios={usuarios}
@@ -775,181 +958,5 @@ const Dispositivos = () => {
     </div>
   )
 }
-
-// Componente para la lista de dispositivos
-const DeviceList = ({ dispositivos, setSelectedDevice, setShowDetailModal, deleteDevice, getDeviceIcon }) => (
-  <div className="user-list">
-    {dispositivos.length > 0 ? (
-      dispositivos.map((device) => (
-        <div key={device.id} className="user-item">
-          <div className="user-avatar">{getDeviceIcon(device.tipo)}</div>
-          <div
-            className="user-info"
-            onClick={() => {
-              setSelectedDevice(device)
-              setShowDetailModal(true)
-            }}
-          >
-            <div className="user-name">
-              {device.tipo} - {device.marca} {device.modelo}
-            </div>
-            <div className="user-access">Serial: {device.serial}</div>
-            <div className="user-details">
-              <span>Estado: {device.estado} </span>
-              {device.placa_cu && <span> Placa: {device.placa_cu}</span>}
-            </div>
-          </div>
-          <div className="user-actions">
-            <button
-              className="action-button-modern edit"
-              onClick={() => {
-                setSelectedDevice(device)
-                setShowDetailModal(true)
-              }}
-            >
-              <FaEdit />
-            </button>
-            <button className="action-button-modern delete" onClick={() => deleteDevice(device.id)}>
-              <FaTrash />
-            </button>
-          </div>
-        </div>
-      ))
-    ) : (
-      <p className="no-results">No hay dispositivos disponibles.</p>
-    )}
-  </div>
-)
-
-// Componente para el formulario de dispositivos
-const DeviceForm = ({
-  device,
-  setDevice,
-  onSubmit,
-  posiciones,
-  sedes,
-  usuarios,
-  tiposDispositivos,
-  fabricantes,
-  estadosDispositivo,
-  estadosUso,
-  sistemasOperativos,
-  procesadores,
-  ubicaciones,
-  razonesSociales,
-  estadosPropiedad,
-  capacidadesMemoriaRam,
-  capacidadesDiscoDuro,
-}) => {
-  if (!device) return null
-
-  return (
-    <div className="device-form">
-      <div className="form-columns">
-        <div className="form-column">
-          {renderSelect("Tipo*", "tipo", device, setDevice, tiposDispositivos)}
-          {renderSelect("Marca*", "marca", device, setDevice, fabricantes)}
-          {renderInput("Modelo*", "modelo", device, setDevice)}
-          {renderInput("Serial*", "serial", device, setDevice)}
-          {renderInput("Placa CU", "placa_cu", device, setDevice)}
-          {renderSelect("Estado*", "estado", device, setDevice, estadosDispositivo)}
-          {renderSelect("Estado de Uso", "estado_uso", device, setDevice, estadosUso)}
-          {renderSelect("Sistema Operativo", "sistema_operativo", device, setDevice, sistemasOperativos)}
-          {renderSelect("Procesador", "procesador", device, setDevice, procesadores)}
-        </div>
-
-        <div className="form-column">
-          {renderSelect("Capacidad Memoria RAM", "capacidad_memoria_ram", device, setDevice, capacidadesMemoriaRam)}
-          {renderSelect("Capacidad Disco Duro", "capacidad_disco_duro", device, setDevice, capacidadesDiscoDuro)}
-          {renderSelect("Ubicación", "ubicacion", device, setDevice, ubicaciones)}
-          {renderSelect("Razón Social", "razon_social", device, setDevice, razonesSociales)}
-          {renderInput("Régimen", "regimen", device, setDevice)}
-          {renderSelect("Estado Propiedad", "estado_propiedad", device, setDevice, estadosPropiedad)}
-          {renderInput("Proveedor", "proveedor", device, setDevice)}
-          {renderInput("Piso", "piso", device, setDevice)}
-        </div>
-
-        <div className="form-column">
-          {renderSelect(
-            "Posición",
-            "posicion",
-            device,
-            setDevice,
-            posiciones.map((pos) => ({
-              value: pos.id,
-              label: pos.nombre,
-            })),
-          )}
-          {renderSelect(
-            "Sede",
-            "sede",
-            device,
-            setDevice,
-            sedes.map((sede) => ({
-              value: sede.id,
-              label: sede.nombre,
-            })),
-          )}
-          {renderSelect(
-            "Usuario Asignado",
-            "usuario_asignado",
-            device,
-            setDevice,
-            usuarios.map((user) => ({
-              value: user.id,
-              label: `${user.nombre} ${user.apellido}`,
-            })),
-          )}
-          <div className="input-group">
-            <label>Observaciones</label>
-            <textarea
-              value={device.observaciones || ""}
-              onChange={(e) => setDevice({ ...device, observaciones: e.target.value })}
-              placeholder="Observaciones adicionales"
-              rows="3"
-            />
-          </div>
-        </div>
-      </div>
-
-      <button className="create-button" onClick={onSubmit}>
-        {device.id ? "Guardar cambios" : "Agregar Dispositivo"}
-      </button>
-    </div>
-  )
-}
-
-// Función para renderizar un input
-const renderInput = (label, field, device, setDevice) => (
-  <div className="input-group">
-    <label>{label}</label>
-    <input
-      type="text"
-      value={device[field] || ""}
-      onChange={(e) => setDevice({ ...device, [field]: e.target.value })}
-      placeholder={label}
-      required={label.includes("*")}
-    />
-  </div>
-)
-
-// Función para renderizar un select
-const renderSelect = (label, field, device, setDevice, options) => (
-  <div className="input-group">
-    <label>{label}</label>
-    <select
-      value={device[field] || ""}
-      onChange={(e) => setDevice({ ...device, [field]: e.target.value || null })}
-      required={label.includes("*")}
-    >
-      <option value="">Seleccione una opción</option>
-      {options.map((opt) => (
-        <option key={opt.value} value={opt.value}>
-          {opt.label}
-        </option>
-      ))}
-    </select>
-  </div>
-)
 
 export default Dispositivos

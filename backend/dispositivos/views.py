@@ -1565,3 +1565,77 @@ class MovimientoViewSet(viewsets.ModelViewSet):
             
             
 # vistas para registro de entradas y salidas de dispositivos
+@api_view(['GET'])
+@permission_classes([AllowAny])  # Puedes agregar permisos si es necesario
+def movimientos_por_sede(request):
+    sede_id = request.query_params.get('sede')
+    
+    try:
+        # Query base para sedes con movimientos
+        sedes_query = Sede.objects.annotate(
+            total_movimientos=Count('movimiento')  # Relación inversa correcta
+        )
+
+        # Contar movimientos sin sede asignada
+        movimientos_sin_sede = Movimiento.objects.filter(sede__isnull=True).count()
+
+        # Aplicar filtros según parámetros
+        if sede_id == "null":
+            data = [{
+                'nombre_sede': 'Sin sede asignada',
+                'total_movimientos': movimientos_sin_sede
+            }]
+        elif sede_id:
+            sede_id = int(sede_id)
+            sedes_query = sedes_query.filter(id=sede_id)
+            data = list(sedes_query.values('id', 'nombre', 'total_movimientos'))
+            
+            # Formatear datos para la gráfica de React
+            data = [{
+                'name': item['nombre'],
+                'value': item['total_movimientos']
+            } for item in data]
+        else:
+            # Todas las sedes más movimientos sin sede
+            data = list(sedes_query.values('id', 'nombre', 'total_movimientos'))
+            
+            # Formatear datos para la gráfica de React
+            data = [{
+                'name': item['nombre'],
+                'value': item['total_movimientos']
+            } for item in data]
+            
+            # Agregar movimientos sin sede si existen
+            if movimientos_sin_sede > 0:
+                data.append({
+                    'name': 'Sin sede asignada',
+                    'value': movimientos_sin_sede
+                })
+
+        # Calcular totales
+        total_movimientos = sum(item['value'] for item in data)
+        total_sedes = len(data)
+
+        return Response({
+            'success': True,
+            'data': data,
+            'total_movimientos': total_movimientos,
+            'total_sedes': total_sedes,
+            'message': 'Datos de movimientos por sede obtenidos correctamente'
+        }, status=status.HTTP_200_OK)
+
+    except (ValueError, TypeError):
+        return Response({
+            'success': False,
+            'error': 'ID de sede inválido',
+            'message': 'El parámetro sede debe ser un número entero válido'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        return Response({
+            'success': False,
+            'error': str(e),
+            'message': 'Error al obtener los movimientos por sede'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+

@@ -37,7 +37,7 @@ const ServiciosExistentes = () => {
   // Estados para búsqueda y paginación
   const [searchTerm, setSearchTerm] = useState("")
   const [currentPage, setCurrentPage] = useState(1)
-  const [itemsPerPage] = useState(6)
+  const [itemsPerPage] = useState(10)
   const [totalPages, setTotalPages] = useState(1)
 
   // Función para obtener y contar posiciones por servicio
@@ -160,6 +160,7 @@ const ServiciosExistentes = () => {
           message: "El campo 'nombre' es obligatorio.",
           type: "error",
         })
+        setIsLoading(false)
         return
       }
 
@@ -191,19 +192,23 @@ const ServiciosExistentes = () => {
 
       await axios.put(`http://127.0.0.1:8000/api/servicios/${serviceId}/`, payload)
 
-      fetchServices()
-      setShowDetailModal(false)
+      await fetchServices()
       
       setAlert({
         show: true,
         message: "Servicio editado exitosamente.",
         type: "success",
       })
+
+      // Cerrar el modal después de 2 segundos si fue exitoso
+      setTimeout(() => {
+        setShowDetailModal(false)
+      }, 2000)
+
     } catch (error) {
       console.error("Error al editar el servicio:", error)
       let errorMessage = "Hubo un error al editar el servicio."
       
-      // Manejar específicamente el error de código duplicado
       if (error.response && error.response.data && 
           error.response.data.codigo_analitico && 
           error.response.data.codigo_analitico.includes("ya existe")) {
@@ -329,24 +334,29 @@ const ServiciosExistentes = () => {
       }
 
       await axios.post("http://127.0.0.1:8000/api/servicios/", payload)
-      setShowForm(false)
-      setNewService({
-        nombre: "",
-        codigo_analitico: "",
-        sede: "",
-        color: "#FFFFFF"
-      })
-      fetchServices()
+      
       setAlert({
         show: true,
         message: "Servicio agregado exitosamente.",
         type: "success",
       })
+
+      // Esperamos 2 segundos antes de cerrar y resetear
+      setTimeout(() => {
+        setShowForm(false)
+        setNewService({
+          nombre: "",
+          codigo_analitico: "",
+          sede: "",
+          color: "#FFFFFF"
+        })
+        fetchServices()
+      }, 2000)
+
     } catch (error) {
       console.error("Error al agregar el servicio:", error)
       let errorMessage = "Hubo un error al agregar el servicio."
       
-      // Manejar específicamente el error de código duplicado
       if (error.response && error.response.data && 
           error.response.data.codigo_analitico && 
           error.response.data.codigo_analitico.includes("ya existe")) {
@@ -595,7 +605,13 @@ const ServiciosExistentes = () => {
                     <p>{alert.message}</p>
                     <button 
                       className="close-button" 
-                      onClick={() => setAlert({ ...alert, show: false })}
+                      onClick={() => {
+                        setAlert({ ...alert, show: false })
+                        // Si es un éxito, cerramos el modal
+                        if (alert.type === "success") {
+                          setShowDetailModal(false)
+                        }
+                      }}
                     >
                       &times;
                     </button>
@@ -681,7 +697,19 @@ const ServiciosExistentes = () => {
                     <p>{alert.message}</p>
                     <button 
                       className="close-button" 
-                      onClick={() => setAlert({ ...alert, show: false })}
+                      onClick={() => {
+                        setAlert({ ...alert, show: false })
+                        // Si es un éxito, cerramos el modal y reseteamos
+                        if (alert.type === "success") {
+                          setShowForm(false)
+                          setNewService({
+                            nombre: "",
+                            codigo_analitico: "",
+                            sede: "",
+                            color: "#FFFFFF"
+                          })
+                        }
+                      }}
                     >
                       &times;
                     </button>

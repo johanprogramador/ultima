@@ -177,76 +177,86 @@ const Movimientos = () => {
   }
 
   // Obtener posiciones por sede
+
   const obtenerPosicionesPorSede = async (sedeId) => {
     try {
       if (!sedeId) {
-        setPosiciones([])
-        setPosicionesDestino([])
-        return
+        setPosiciones([]);
+        setPosicionesDestino([]);
+        return;
       }
-
-      const token = sessionStorage.getItem("token")
-      const response = await axios.get(`http://localhost:8000/api/posiciones/?sede=${sedeId}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      })
-
-      console.log("Posiciones API response:", response.data)
-
-      // Handle different possible response formats
-      let posicionesData = []
-      if (Array.isArray(response.data)) {
-        posicionesData = response.data
-      } else if (response.data?.results && Array.isArray(response.data.results)) {
-        posicionesData = response.data.results
-      } else if (response.data?.data && Array.isArray(response.data.data)) {
-        posicionesData = response.data.data
-      } else if (response.data?.posiciones && Array.isArray(response.data.posiciones)) {
-        posicionesData = response.data.posiciones
-      } else {
-        console.warn("Formato de respuesta no reconocido para posiciones:", response.data)
-        posicionesData = []
-      }
-
-      console.log("Posiciones procesadas:", posicionesData)
-
-      // Set positions without filtering - we want all positions from the sede
-      setPosiciones(posicionesData)
-      setPosicionesDestino(posicionesData)
-
-      // Update the filter dropdown
-      if (filtros.sede === sedeId) {
-        // If we're already filtering by this sede, update the positions dropdown
-        const posicionesSelect = document.getElementById("posicion")
-        if (posicionesSelect) {
-          // Force a re-render of the select options
-          posicionesSelect.dispatchEvent(new Event("change", { bubbles: true }))
+  
+      const token = sessionStorage.getItem('token');
+      const response = await axios.get(
+        `http://localhost:8000/api/posiciones/?sede=${sedeId}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
         }
+      );
+  
+      // Procesar la respuesta según diferentes formatos posibles
+      let posicionesData = [];
+      
+      if (Array.isArray(response.data)) {
+        posicionesData = response.data;
+      } else if (response.data?.results) {
+        posicionesData = response.data.results;
+      } else if (response.data?.data) {
+        posicionesData = response.data.data;
+      } else {
+        posicionesData = [];
       }
+  
+      // Formatear posiciones para asegurar estructura consistente
+      const posicionesFormateadas = posicionesData.map(pos => ({
+        id: pos.id || pos._id || '',
+        nombre: pos.nombre || pos.name || '',
+        piso: pos.piso || pos.floor || '',
+        sede: pos.sede || pos.sede_id || null
+      }));
+  
+      // Filtrar solo las posiciones que pertenecen a la sede seleccionada
+      const posicionesFiltradas = posicionesFormateadas.filter(
+        // eslint-disable-next-line eqeqeq
+        pos => pos.sede == sedeId
+      );
+  
+      setPosiciones(posicionesFiltradas);
+      setPosicionesDestino(posicionesFiltradas);
+      
+      // Resetear posición seleccionada al cambiar de sede
+      setFiltros(prev => ({
+        ...prev,
+        posicion: ""
+      }));
+  
     } catch (error) {
-      console.error("Error obteniendo posiciones:", error)
-
-      let mensajeError = "Error al cargar las posiciones"
-
+      console.error("Error obteniendo posiciones:", error);
+      
+      let mensajeError = "Error al cargar las posiciones";
+      
       if (error.response) {
         if (error.response.status === 401) {
-          mensajeError = "No autorizado - Por favor inicie sesión nuevamente"
+          mensajeError = "No autorizado - Por favor inicie sesión nuevamente";
         } else if (error.response.status === 404) {
-          mensajeError = "Sede no encontrada"
+          mensajeError = "Sede no encontrada";
         } else if (error.response.data) {
-          mensajeError = error.response.data.error || error.response.data.detail || JSON.stringify(error.response.data)
+          mensajeError = error.response.data.error || 
+                         error.response.data.detail || 
+                         JSON.stringify(error.response.data);
         }
       } else if (error.request) {
-        mensajeError = "El servidor no respondió. Verifique su conexión."
+        mensajeError = "El servidor no respondió. Verifique su conexión.";
       } else {
-        mensajeError = error.message
+        mensajeError = error.message;
       }
-
-      mostrarNotificacion(mensajeError, "error")
-      setPosiciones([])
-      setPosicionesDestino([])
+      
+      mostrarNotificacion(mensajeError, "error");
+      setPosiciones([]);
+      setPosicionesDestino([]);
     }
   }
 

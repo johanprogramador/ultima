@@ -923,7 +923,7 @@ function FloorPlan() {
               color: cellColor,
               colorFuente: getContrastColor(cellColor),
               colorOriginal: colorInfo.originalColor,
-              piso: selectedPiso,
+              piso: selectedPiso, // Usar el piso seleccionado actualmente
               sede: selectedSede, // Asignar la sede seleccionada
               mergedCells: mergedCells,
               dispositivos: [], // Inicialmente sin dispositivos
@@ -1041,7 +1041,7 @@ function FloorPlan() {
                 color: cellColor,
                 colorFuente: getContrastColor(cellColor),
                 colorOriginal: colorInfo.originalColor,
-                piso: selectedPiso,
+                piso: selectedPiso, // Usar el piso seleccionado actualmente
                 sede: selectedSede, // Asignar la sede seleccionada
                 mergedCells: [{ row: actualRow, col: colLetter }],
                 dispositivos: [], // Inicialmente sin dispositivos
@@ -3184,6 +3184,7 @@ function FloorPlan() {
         </div>
       )}
     </div>
-  )}
+  )
+}
 
 export default FloorPlan

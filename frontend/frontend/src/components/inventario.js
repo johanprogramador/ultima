@@ -31,7 +31,6 @@ const Inventario = () => {
           Accept: "application/json",
         },
       })
-      // Eliminado el console.log de sedes
       setSedes(response.data)
       return response.data
     } catch (error) {
@@ -45,9 +44,7 @@ const Inventario = () => {
     setLoading(true)
     setError(null)
     try {
-      let url = "http://127.0.0.1:8000/api/dispositivos/"
-      if (!isAdmin && sedeId) url += `?sede_id=${sedeId}`
-
+      const url = "http://127.0.0.1:8000/api/dispositivos/"
       const response = await axios.get(url, {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -70,7 +67,6 @@ const Inventario = () => {
         throw new Error("Formato de datos inválido recibido del servidor")
       }
 
-      // Eliminado el console.log del primer dispositivo
       setDispositivos(dispositivosData)
     } catch (error) {
       console.error("Error al obtener dispositivos:", error)
@@ -92,7 +88,7 @@ const Inventario = () => {
     } finally {
       setLoading(false)
     }
-  }, [token, isAdmin, sedeId])
+  }, [token])
 
   useEffect(() => {
     const cargarDatos = async () => {
@@ -103,9 +99,7 @@ const Inventario = () => {
     cargarDatos()
   }, [fetchDispositivos, fetchSedes])
 
-  // Función para obtener el nombre de la sede de un dispositivo
   const getNombreSede = (dispositivo) => {
-    // Caso especial: Si sede es un número (ID de sede), buscar en el array de sedes
     if (
       typeof dispositivo.sede === "number" ||
       (typeof dispositivo.sede === "string" && !isNaN(Number.parseInt(dispositivo.sede)))
@@ -118,22 +112,18 @@ const Inventario = () => {
       return `Sede ID: ${sedeId}`
     }
 
-    // Caso 1: El dispositivo tiene un objeto sede con nombre
     if (dispositivo.sede && typeof dispositivo.sede === "object" && dispositivo.sede.nombre) {
       return dispositivo.sede.nombre
     }
 
-    // Caso 2: El dispositivo tiene sede_nombre
     if (dispositivo.sede_nombre) {
       return dispositivo.sede_nombre
     }
 
-    // Caso 3: El dispositivo tiene un string como sede (que no es un número)
     if (typeof dispositivo.sede === "string" && dispositivo.sede !== "") {
       return dispositivo.sede
     }
 
-    // Caso 4: El dispositivo tiene sede_id
     if (dispositivo.sede_id) {
       const sedeEncontrada = sedes.find((sede) => sede.id === dispositivo.sede_id)
       if (sedeEncontrada) {
@@ -142,7 +132,6 @@ const Inventario = () => {
       return `Sede ID: ${dispositivo.sede_id}`
     }
 
-    // Caso 5: No hay información de sede
     return "No asignada"
   }
 
@@ -188,10 +177,33 @@ const Inventario = () => {
       }
 
       const ws = XLSX.utils.json_to_sheet(
-        dispositivos.map((dispositivo) => ({
-          ...dispositivo,
-          sede: getNombreSede(dispositivo),
-        })),
+        dispositivos.map((dispositivo) => {
+          const posicionInfo = dispositivo.posicion || {}
+          const servicioInfo = posicionInfo.servicio || {}
+
+          return {
+            PISO: dispositivo.piso || posicionInfo.piso || "",
+            POSICION: posicionInfo.nombre || "",
+            SERVICIO: servicioInfo.nombre || "",
+            CODIGO_ANALITICO: servicioInfo.codigo_analitico || "",
+            TIPO_DISPOSITIVO: dispositivo.tipo || "",
+            FABRICANTE: dispositivo.marca || "",
+            SERIAL: dispositivo.serial || "",
+            PLACA_CU: dispositivo.placa_cu || "",
+            SISTEMA_OPERATIVO: dispositivo.sistema_operativo || "",
+            PROCESADOR: dispositivo.procesador || "",
+            DISCO_DURO: dispositivo.capacidad_disco_duro || "",
+            MEMORIA_RAM: dispositivo.capacidad_memoria_ram || "",
+            PROVEEDOR: dispositivo.proveedor || "",
+            ESTADO_PROPIEDAD: dispositivo.estado_propiedad || "",
+            RAZON_SOCIAL: dispositivo.razon_social || "",
+            UBICACION: dispositivo.ubicacion || "",
+            ESTADO: dispositivo.estado || "",
+            OBSERVACION: dispositivo.observaciones || "",
+            REGIMEN: dispositivo.regimen || "",
+            SEDE: getNombreSede(dispositivo),
+          }
+        }),
       )
 
       const wb = XLSX.utils.book_new()
@@ -215,43 +227,105 @@ const Inventario = () => {
       return
     }
 
-    const formData = new FormData()
-    formData.append("file", file)
-
     try {
       setLoading(true)
       setError(null)
 
-      await axios.post("http://127.0.0.1:8000/api/importar-dispositivos/", formData, {
-        headers: {
-          "Content-Type": "multipart/form-data",
-          Authorization: `Bearer ${token}`,
-        },
-        validateStatus: (status) => status >= 200 && status < 300,
-      })
+      const reader = new FileReader()
+      reader.onload = async (e) => {
+        try {
+          const data = new Uint8Array(e.target.result)
+          const workbook = XLSX.read(data, { type: "array" })
+          const sheetName = workbook.SheetNames[0]
+          const worksheet = workbook.Sheets[sheetName]
+          let jsonData = XLSX.utils.sheet_to_json(worksheet)
 
-      setSuccess("Datos importados correctamente")
-      setTimeout(() => setSuccess(null), 5000)
-      fetchDispositivos()
+          // Procesar y estandarizar los datos
+          const processedData = jsonData.map((row) => {
+            const newRow = {}
+            
+            // Convertir a mayúsculas y limpiar espacios
+            Object.keys(row).forEach((key) => {
+              if (typeof row[key] === "string") {
+                newRow[key] = row[key].toUpperCase().trim()
+              } else {
+                newRow[key] = row[key]
+              }
+            })
+
+            // Estandarizar formato del piso
+            let piso = ""
+            if (newRow.PISO) {
+              piso = newRow.PISO
+                .replace(/PISO\s*/i, "")
+                .replace(/P\s*/i, "")
+                .trim()
+              
+              if (piso.match(/^\d+$/)) {
+                piso = `PISO${piso}`
+              } else if (piso.toUpperCase() === "TORRE") {
+                piso = "TORRE"
+              }
+            }
+
+            return {
+              ...newRow,
+              PISO: piso || newRow.PISO || "",
+              POSICION: newRow.POSICION || "",
+              SERVICIO: newRow.SERVICIO || "",
+              CODIGO_ANALITICO: newRow.CODIGO_ANALITICO || "",
+              TIPO_DISPOSITIVO: newRow.TIPO_DISPOSITIVO || "",
+              FABRICANTE: newRow.FABRICANTE || "",
+              SERIAL: newRow.SERIAL || "",
+              PLACA_CU: newRow.PLACA_CU || "",
+              SISTEMA_OPERATIVO: newRow.SISTEMA_OPERATIVO || "",
+              PROCESADOR: newRow.PROCESADOR || "",
+              DISCO_DURO: newRow.DISCO_DURO || "",
+              MEMORIA_RAM: newRow.MEMORIA_RAM || "",
+              PROVEEDOR: newRow.PROVEEDOR || "",
+              ESTADO_PROPIEDAD: newRow.ESTADO_PROPIEDAD || "",
+              RAZON_SOCIAL: newRow.RAZON_SOCIAL || "",
+              UBICACION: newRow.UBICACION || "",
+              ESTADO: newRow.ESTADO || "",
+              OBSERVACION: newRow.OBSERVACION || "",
+              REGIMEN: newRow.REGIMEN || "",
+              SEDE: newRow.SEDE || ""
+            }
+          })
+
+          // Convertir de nuevo a Excel para enviar
+          const newWorksheet = XLSX.utils.json_to_sheet(processedData)
+          const newWorkbook = XLSX.utils.book_new()
+          XLSX.utils.book_append_sheet(newWorkbook, newWorksheet, "Datos")
+
+          const excelBuffer = XLSX.write(newWorkbook, { bookType: "xlsx", type: "array" })
+          const blob = new Blob([excelBuffer], {
+            type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          })
+          
+          const formData = new FormData()
+          formData.append("file", new File([blob], file.name, { type: file.type }))
+
+          await axios.post("http://127.0.0.1:8000/api/importar-dispositivos/", formData, {
+            headers: {
+              "Content-Type": "multipart/form-data",
+              Authorization: `Bearer ${token}`,
+            },
+            validateStatus: (status) => status >= 200 && status < 300,
+          })
+
+          setSuccess("Datos importados correctamente")
+          setTimeout(() => setSuccess(null), 5000)
+          fetchDispositivos()
+        } catch (error) {
+          console.error("Error al procesar el archivo Excel:", error)
+          setError(`Error al procesar el archivo Excel: ${error.message}`)
+        }
+      }
+      reader.readAsArrayBuffer(file)
     } catch (error) {
       console.error("Error al importar datos:", error)
-
-      let errorMessage = "Error al importar datos"
-      if (error.response) {
-        if (error.response.data) {
-          if (error.response.data.detail) {
-            errorMessage = error.response.data.detail
-          } else if (error.response.data.message) {
-            errorMessage = error.response.data.message
-          } else if (typeof error.response.data === "string") {
-            errorMessage = error.response.data
-          }
-        }
-      } else if (error.message) {
-        errorMessage = error.message
-      }
-
-      setError(errorMessage)
+      setError(`Error al importar datos: ${error.response?.data?.detail || error.message}`)
     } finally {
       setLoading(false)
       event.target.value = ""
@@ -307,70 +381,16 @@ const Inventario = () => {
     <div className="inventory-containert">
       <div className="main-content">
         {error && (
-          <div
-            className="error-banner"
-            style={{
-              padding: "1rem",
-              backgroundColor: "#ffebee",
-              color: "#c62828",
-              borderRadius: "4px",
-              marginBottom: "1rem",
-              border: "1px solid #ef9a9a",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-            }}
-          >
+          <div className="error-banner">
             <span>{error}</span>
-            <button
-              onClick={() => setError(null)}
-              style={{
-                background: "none",
-                border: "none",
-                color: "#c62828",
-                cursor: "pointer",
-                fontSize: "1.2rem",
-              }}
-            >
-              ×
-            </button>
+            <button onClick={() => setError(null)}>×</button>
           </div>
         )}
 
         {success && (
-          <div
-            className="success-banner"
-            style={{
-              padding: "1rem",
-              backgroundColor: "#e8f5e9",
-              color: "#2e7d32",
-              borderRadius: "4px",
-              marginBottom: "1rem",
-              border: "1px solid #a5d6a7",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-            }}
-          >
+          <div className="success-banner">
             <span>{success}</span>
-            <button
-              onClick={() => setSuccess(null)}
-              style={{
-                background: "none",
-                border: "none",
-                color: "#2e7d32",
-                cursor: "pointer",
-                fontSize: "1.2rem",
-              }}
-            >
-              ×
-            </button>
-          </div>
-        )}
-
-        {!isAdmin && (
-          <div className="info-banner">
-            Mostrando solo los dispositivos de tu sede asignada: {user?.sedeNombre || "Sede no asignada"}
+            <button onClick={() => setSuccess(null)}>×</button>
           </div>
         )}
 
@@ -389,28 +409,26 @@ const Inventario = () => {
             />
           </div>
 
-          {isAdmin && (
-            <div className="action-buttonst">
-              <label className="action-buttont">
-                <input
-                  type="file"
-                  accept=".xlsx,.xls"
-                  onChange={handleImportExcel}
-                  style={{ display: "none" }}
-                  disabled={loading}
-                />
-                {loading ? "Cargando..." : "Importar Excel"}
-              </label>
-              <button
-                onClick={handleExportExcel}
-                className="action-buttont"
-                disabled={loading || dispositivos.length === 0}
-              >
-                <FileText size={16} />
-                Exportar Excel
-              </button>
-            </div>
-          )}
+          <div className="action-buttonst">
+            <label className="action-buttont">
+              <input
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={handleImportExcel}
+                style={{ display: "none" }}
+                disabled={loading}
+              />
+              {loading ? "Cargando..." : "Importar Excel"}
+            </label>
+            <button
+              onClick={handleExportExcel}
+              className="action-buttont"
+              disabled={loading || dispositivos.length === 0}
+            >
+              <FileText size={16} />
+              Exportar Excel
+            </button>
+          </div>
 
           <select
             value={filtros.tipo}
@@ -420,26 +438,28 @@ const Inventario = () => {
           >
             <option value="">Todos los tipos</option>
             <option value="COMPUTADOR">Computador</option>
+            <option value="DESKTOP">Desktop</option>
             <option value="MONITOR">Monitor</option>
-            <option value="IMPRESORA">Impresora</option>
-            <option value="TELEFONO">Teléfono</option>
+            <option value="TABLET">Tablet</option>
+            <option value="MOVIL">Celular</option>
+            <option value="HP_PRODISPLAY_P201">HP ProDisplay P201</option>
+            <option value="PORTATIL">Portátil</option>
+            <option value="TODO_EN_UNO">Todo en uno</option>
           </select>
 
-          {isAdmin && (
-            <select
-              value={filtros.sede}
-              onChange={(e) => setFiltros({ ...filtros, sede: e.target.value })}
-              className="filter-select"
-              disabled={loading}
-            >
-              <option value="">Todas las sedes</option>
-              {sedes.map((sede) => (
-                <option key={sede.id} value={sede.nombre}>
-                  {sede.nombre}
-                </option>
-              ))}
-            </select>
-          )}
+          <select
+            value={filtros.sede}
+            onChange={(e) => setFiltros({ ...filtros, sede: e.target.value })}
+            className="filter-select"
+            disabled={loading}
+          >
+            <option value="">Todas las sedes</option>
+            {sedes.map((sede) => (
+              <option key={sede.id} value={sede.nombre}>
+                {sede.nombre}
+              </option>
+            ))}
+          </select>
 
           <select
             value={filtros.estado}
@@ -449,9 +469,16 @@ const Inventario = () => {
           >
             <option value="">Todos los estados</option>
             <option value="BUENO">Bueno</option>
+            <option value="BODEGA_CN">Bodega CN</option>
+            <option value="BODEGA">Bodega</option>
+            <option value="MALA">Mala</option>
             <option value="MALO">Malo</option>
-            <option value="EN_REPARACION">En reparación</option>
-            <option value="DADO_DE_BAJA">Dado de baja</option>
+            <option value="PENDIENTE_BAJA">Pendiente/Baja</option>
+            <option value="PERDIDO_ROBADO">Perdido/Robado</option>
+            <option value="REPARAR">Reparar</option>
+            <option value="REPARAR_BAJA">Reparar/Baja</option>
+            <option value="SEDE">Sede</option>
+            <option value="STOCK">Stock</option>
           </select>
         </div>
 
@@ -459,7 +486,28 @@ const Inventario = () => {
           <table className="inventory-tablet">
             <thead>
               <tr>
-                {["Tipo", "Fabricante", "Modelo", "Serial", "Estado", "Sede", "Acciones"].map((head) => (
+                {[
+                  "Piso",
+                  "Posición",
+                  "Servicio",
+                  "Código Analítico",
+                  "Tipo Dispositivo",
+                  "Fabricante",
+                  "Serial",
+                  "CU(placa_cu)",
+                  "Sistema Operativo",
+                  "Procesador",
+                  "Disco Duro",
+                  "Memoria RAM",
+                  "Proveedor",
+                  "Estado Proveedor",
+                  "Razón Social",
+                  "Ubicación",
+                  "Estado",
+                  "Observación",
+                  "Regimen",
+                  "Acciones",
+                ].map((head) => (
                   <th key={head}>{head}</th>
                 ))}
               </tr>
@@ -467,7 +515,7 @@ const Inventario = () => {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={7} style={{ textAlign: "center", padding: "2rem" }}>
+                  <td colSpan={20} style={{ textAlign: "center", padding: "2rem" }}>
                     <div style={{ display: "flex", justifyContent: "center" }}>
                       <div className="loader"></div>
                     </div>
@@ -475,7 +523,7 @@ const Inventario = () => {
                 </tr>
               ) : filteredDispositivos.length === 0 ? (
                 <tr>
-                  <td colSpan={7} style={{ textAlign: "center", padding: "2rem", color: "#666" }}>
+                  <td colSpan={20} style={{ textAlign: "center", padding: "2rem", color: "#666" }}>
                     {search || Object.values(filtros).some(Boolean)
                       ? "No se encontraron dispositivos con los filtros aplicados"
                       : "No hay dispositivos registrados"}
@@ -483,23 +531,35 @@ const Inventario = () => {
                 </tr>
               ) : (
                 currentItems.map((dispositivo) => {
-                  // Eliminado todo el código de depuración
                   const nombreSede = getNombreSede(dispositivo)
+                  const posicionInfo = dispositivo.posicion || {}
+                  const servicioInfo = posicionInfo.servicio || {}
 
                   return (
                     <tr key={dispositivo.id}>
+                      <td>{dispositivo.piso || posicionInfo.piso || "-"}</td>
+                      <td>{posicionInfo.nombre || "-"}</td>
+                      <td>{servicioInfo.nombre || "-"}</td>
+                      <td>{servicioInfo.codigo_analitico || "-"}</td>
                       <td>{dispositivo.tipo || "-"}</td>
                       <td>{dispositivo.marca || "-"}</td>
-                      <td>{dispositivo.modelo || "-"}</td>
                       <td>{dispositivo.serial || "-"}</td>
+                      <td>{dispositivo.placa_cu || "-"}</td>
+                      <td>{dispositivo.sistema_operativo || "-"}</td>
+                      <td>{dispositivo.procesador || "-"}</td>
+                      <td>{dispositivo.capacidad_disco_duro || "-"}</td>
+                      <td>{dispositivo.capacidad_memoria_ram || "-"}</td>
+                      <td>{dispositivo.proveedor || "-"}</td>
+                      <td>{dispositivo.estado_propiedad || "-"}</td>
+                      <td>{dispositivo.razon_social || "-"}</td>
+                      <td>{dispositivo.ubicacion || "-"}</td>
                       <td>
                         <span className={`estado-badge estado-${dispositivo.estado?.toLowerCase() || "desconocido"}`}>
                           {dispositivo.estado || "-"}
                         </span>
                       </td>
-                      <td>
-                        <span className="sede-badge">{nombreSede}</span>
-                      </td>
+                      <td>{dispositivo.observaciones || "-"}</td>
+                      <td>{dispositivo.regimen || "-"}</td>
                       <td>
                         <button
                           onClick={() => handleDelete(dispositivo.id)}
@@ -548,14 +608,7 @@ const Inventario = () => {
         </div>
 
         {dispositivos.length > 0 && (
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
-              gap: "2rem",
-              marginTop: "2rem",
-            }}
-          >
+          <div className="charts-container">
             <div className="chart-containert">
               <h2 className="chart-titlet">Dispositivos por Tipo</h2>
               <ResponsiveContainer width="100%" height={300}>
@@ -606,14 +659,65 @@ const Inventario = () => {
           100% { transform: rotate(360deg); }
         }
         
-        .sede-badge {
-          display: inline-block;
+        .error-banner {
+          padding: 1rem;
+          background-color: #ffebee;
+          color: #c62828;
+          border-radius: 4px;
+          margin-bottom: 1rem;
+          border: 1px solid #ef9a9a;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        }
+        
+        .success-banner {
+          padding: 1rem;
+          background-color: #e8f5e9;
+          color: #2e7d32;
+          border-radius: 4px;
+          margin-bottom: 1rem;
+          border: 1px solid #a5d6a7;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        }
+        
+        .charts-container {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+          gap: 2rem;
+          margin-top: 2rem;
+        }
+        
+        .loader {
+          border: 4px solid #f3f3f3;
+          border-top: 4px solid #3498db;
+          border-radius: 50%;
+          width: 30px;
+          height: 30px;
+          animation: spin 1s linear infinite;
+        }
+        
+        .estado-badge {
           padding: 0.25rem 0.5rem;
           border-radius: 4px;
-          background-color: #e3f2fd;
-          color: #1565c0;
+          font-size: 0.8rem;
           font-weight: 500;
         }
+        
+        .estado-bueno { background-color: #e8f5e9; color: #2e7d32; }
+        .estado-bodega_cn { background-color: #e3f2fd; color: #1565c0; }
+        .estado-bodega { background-color: #e3f2fd; color: #1565c0; }
+        .estado-mala { background-color: #ffebee; color: #c62828; }
+        .estado-malo { background-color: #ffebee; color: #c62828; }
+        .estado-pendiente_baja { background-color: #fff8e1; color: #ff8f00; }
+        .estado-perdido_robado { background-color: #f3e5f5; color: #7b1fa2; }
+        .estado-reparar { background-color: #fff3e0; color: #e65100; }
+        .estado-reparar_baja { background-color: #fbe9e7; color: #d84315; }
+        .estado-sede { background-color: #e0f7fa; color: #00838f; }
+        .estado-stock { background-color: #f1f8e9; color: #558b2f; }
+        .estado-desconocido { background-color: #eceff1; color: #455a64; }
       `}</style>
     </div>
   )
