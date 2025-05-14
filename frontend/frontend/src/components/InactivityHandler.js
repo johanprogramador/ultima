@@ -30,7 +30,7 @@
             }
             };
             performLogout();
-        }, 1800000); // 30 minutos de inactividad
+        }, 1800000000000); // 30 minutos de inactividad
         };
 
         const setupListeners = () => {
