@@ -1639,3 +1639,142 @@ def movimientos_por_sede(request):
 
 
 
+from django.http import JsonResponse
+from rest_framework.views import APIView
+from rest_framework.parsers import MultiPartParser
+from rest_framework import status
+import pandas as pd
+from .models import Dispositivo, Servicios, Posicion, Sede
+from django.db import transaction
+import random
+
+
+def generar_color_aleatorio():
+    return "#{:06x}".format(random.randint(0, 0xFFFFFF))
+
+class ImportarDispositivosView(APIView):
+    parser_classes = [MultiPartParser]
+    
+    def post(self, request, format=None):
+        file = request.FILES['file']
+        sede_id = request.data.get('sede_id')
+        
+        try:
+            # Validar que se haya proporcionado una sede
+            if not sede_id:
+                return JsonResponse(
+                    {'error': 'Debe seleccionar una sede para la importación'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Obtener la sede
+            try:
+                sede = Sede.objects.get(id=sede_id)
+            except Sede.DoesNotExist:
+                return JsonResponse(
+                    {'error': 'La sede seleccionada no existe'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Leer el archivo Excel
+            df = pd.read_excel(file)
+            dispositivos_creados = 0
+            dispositivos_actualizados = 0
+            errores = []
+            
+            with transaction.atomic():
+                for index, row in df.iterrows():
+                    try:
+                        # Procesar cada fila del Excel
+                        servicio_nombre = str(row.get('SERVICIO', '')).strip().upper()
+                        codigo_analitico = str(row.get('CODIGO_ANALITICO', '')).strip().upper()
+                        posicion_nombre = str(row.get('POSICION', '')).strip().upper()
+                        piso = str(row.get('PISO', '')).strip().upper()
+                        
+                        # Estandarizar formato del piso
+                        if piso:
+                            piso = piso.replace('PISO', '').replace('P', '').strip()
+                            if piso.isdigit():
+                                piso = f"PISO{piso}"
+                            elif piso.upper() == 'TORRE':
+                                piso = 'TORRE'
+                        
+                        # Buscar el servicio si existe, pero no crear uno nuevo
+                        servicio = None
+                        if servicio_nombre:
+                            servicio = Servicios.objects.filter(
+                                nombre__iexact=servicio_nombre
+                            ).first()
+                        
+                        # Buscar la posición si existe (no crear nuevas)
+                        posicion = None
+                        if posicion_nombre and piso:
+                            posicion = Posicion.objects.filter(
+                                nombre__iexact=posicion_nombre,
+                                piso__iexact=piso,
+                                sede=sede
+                            ).first()
+                        
+                        # Preparar datos del dispositivo según el modelo exacto
+                        dispositivo_data = {
+                            'tipo': str(row.get('TIPO_DISPOSITIVO', '')).strip().upper(),
+                            'estado': str(row.get('ESTADO', '')).strip().upper(),
+                            'marca': str(row.get('FABRICANTE', '')).strip().upper(),
+                            'modelo': str(row.get('MODELO', '')).strip().upper(),
+                            'serial': str(row.get('SERIAL', '')).strip().upper(),
+                            'placa_cu': str(row.get('PLACA_CU', '')).strip().upper(),
+                            'piso': piso,
+                            'sistema_operativo': str(row.get('SISTEMA_OPERATIVO', '')).strip().upper(),
+                            'procesador': str(row.get('PROCESADOR', '')).strip().upper(),
+                            'capacidad_disco_duro': str(row.get('DISCO_DURO', '')).strip().upper(),
+                            'capacidad_memoria_ram': str(row.get('MEMORIA_RAM', '')).strip().upper(),
+                            'proveedor': str(row.get('PROVEEDOR', '')).strip(),
+                            'ubicacion': str(row.get('UBICACION', '')).strip().upper(),
+                            'observaciones': str(row.get('OBSERVACION', '')).strip(),
+                            'regimen': str(row.get('REGIMEN', '')).strip().upper(),
+                            'estado_propiedad': str(row.get('ESTADO_PROPIEDAD', '')).strip().upper(),
+                            'razon_social': str(row.get('RAZON_SOCIAL', '')).strip().upper(),
+                            'estado_uso': str(row.get('ESTADO_USO', 'EN_USO')).strip().upper(),
+                            'posicion': posicion,
+                            'sede': sede
+                        }
+                        
+                        # Validar campos obligatorios
+                        if not dispositivo_data['serial']:
+                            raise ValidationError("El campo SERIAL es obligatorio")
+                        
+                        if not dispositivo_data['tipo']:
+                            raise ValidationError("El campo TIPO_DISPOSITIVO es obligatorio")
+                        
+                        if not dispositivo_data['marca']:
+                            raise ValidationError("El campo FABRICANTE es obligatorio")
+                        
+                        # Crear o actualizar dispositivo
+                        dispositivo, created = Dispositivo.objects.update_or_create(
+                            serial=dispositivo_data['serial'],
+                            defaults=dispositivo_data
+                        )
+                        
+                        if created:
+                            dispositivos_creados += 1
+                        else:
+                            dispositivos_actualizados += 1
+                            
+                    except Exception as e:
+                        errores.append({
+                            'fila': index + 2,  # +1 por el header, +1 porque index empieza en 0
+                            'error': str(e),
+                            'serial': str(row.get('SERIAL', '')).strip().upper()
+                        })
+                        continue
+            
+            return JsonResponse({
+                'message': f'Importación completada. {dispositivos_creados} creados, {dispositivos_actualizados} actualizados.',
+                'errores': errores,
+                'total_errores': len(errores)
+            }, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            return JsonResponse({
+                'error': f'Error en la importación: {str(e)}'
+            }, status=status.HTTP_400_BAD_REQUEST)
