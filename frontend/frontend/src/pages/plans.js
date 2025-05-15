@@ -52,11 +52,11 @@ ChartJS.register(
 const API_URL = "http://127.0.0.1:8000/"
 
 const PISOS = [
-  { value: "PISO1", label: "Piso 1" },
-  { value: "PISO2", label: "Piso 2" },
-  { value: "PISO3", label: "Piso 3" },
-  { value: "PISO4", label: "Piso 4" },
-  { value: "TORRE1", label: "Torre 1" },
+  { value: "PISO1", label: "PISO1" },
+  { value: "PISO2", label: "PISO2" },
+  { value: "PISO3", label: "PISO3" },
+  { value: "PISO4", label: "PISO4" },
+  { value: "TORRE1", label: "TORRE1" },
 ]
 
 // Ya no necesitamos la lista de colores predefinidos, ya que los colores vendrán del servicio
@@ -154,87 +154,13 @@ const extractColor = (cell) => {
       } else if (cell.s.fill.fgColor.theme !== undefined) {
         // Colores de tema de Excel
         const themeColors = {
-          0: "FFFFFF", // Blanco
-          1: "000000", // Negro
-          2: "E7E6E6", // Gris claro
-          3: "44546A", // Azul oscuro
-          4: "4472C4", // Azul
-          5: "ED7D31", // Naranja
-          6: "A5A5A5", // Gris
-          7: "FFC000", // Amarillo
-          8: "5B9BD5", // Azul claro
-          9: "70AD47", // Verde
-          10: "FF0000", // Rojo
+          0: "5B9BD5", // Azul claro
         }
         color = themeColors[cell.s.fill.fgColor.theme] || "FFFFFF"
       } else if (cell.s.fill.fgColor.indexed !== undefined) {
         // Colores indexados de Excel
         const indexedColors = {
-          0: "000000", // Negro
-          1: "FFFFFF", // Blanco
-          2: "FF0000", // Rojo
-          3: "00FF00", // Verde
-          4: "0000FF", // Azul
-          5: "FFFF00", // Amarillo
-          6: "FF00FF", // Magenta
-          7: "00FFFF", // Cyan
-          8: "000000", // Negro
-          9: "FFFFFF", // Blanco
-          10: "FF0000", // Rojo
-          11: "00FF00", // Verde
-          12: "0000FF", // Azul
-          13: "FFFF00", // Amarillo
-          14: "FF00FF", // Magenta
-          15: "00FFFF", // Cyan
-          16: "800000", // Marrón
-          17: "008000", // Verde oscuro
-          18: "000080", // Azul marino
-          19: "808000", // Oliva
-          20: "800080", // Púrpura
-          21: "008080", // Verde azulado
-          22: "C0C0C0", // Plata
-          23: "808080", // Gris
-          24: "9999FF", // Lavanda
-          25: "993366", // Burdeos
-          26: "FFFFCC", // Crema
-          27: "CCFFFF", // Azul pálido
-          28: "660066", // Morado
-          29: "FF8080", // Rosa
-          30: "0066CC", // Azul medio
-          31: "CCCCFF", // Lila
-          32: "000080", // Azul marino
-          33: "FF00FF", // Fucsia
-          34: "FFFF00", // Amarillo
-          35: "00FFFF", // Cyan
-          36: "800080", // Púrpura
-          37: "800000", // Marrón
-          38: "008080", // Verde azulado
-          39: "0000FF", // Azul
-          40: "00CCFF", // Azul cielo
-          41: "CCFFFF", // Azul pálido
-          42: "CCFFCC", // Verde pálido
-          43: "FFFF99", // Amarillo pálido
-          44: "99CCFF", // Azul pastel
-          45: "FF99CC", // Rosa pastel
-          46: "CC99FF", // Lila pastel
-          47: "FFCC99", // Melocotón
-          48: "3366FF", // Azul real
-          49: "33CCCC", // Turquesa
-          50: "99CC00", // Verde oliva
-          51: "FFCC00", // Naranja
-          52: "FF9900", // Naranja oscuro
-          53: "FF6600", // Naranja rojizo
-          54: "666699", // Azul grisáceo
-          55: "969696", // Gris medio
-          56: "003366", // Azul muy oscuro
-          57: "339966", // Verde mar
-          58: "003300", // Verde muy oscuro
-          59: "333300", // Oliva oscuro
-          60: "993300", // Marrón oscuro
-          61: "993366", // Burdeos
-          62: "333399", // Índigo
-          63: "333333", // Gris muy oscuro
-          64: "FF0000", // Rojo
+          0: "FF0000", // Rojo
         }
         color = indexedColors[cell.s.fill.fgColor.indexed] || "FFFFFF"
       }
@@ -247,24 +173,12 @@ const extractColor = (cell) => {
       } else if (cell.s.fill.bgColor.theme !== undefined) {
         const themeColors = {
           0: "FFFFFF",
-          1: "000000",
-          2: "E7E6E6",
-          3: "44546A",
-          4: "4472C4",
-          5: "ED7D31", // Naranja
-          6: "A5A5A5", // Gris
-          7: "FFC000", // Amarillo
-          8: "5B9BD5", // Azul claro
-          9: "70AD47", // Verde
-          10: "FF0000", // Rojo
         }
         color = themeColors[cell.s.fill.bgColor.theme] || "FFFFFF"
       } else if (cell.s.fill.bgColor.indexed !== undefined) {
         // Usar los mismos colores indexados definidos anteriormente
         const indexedColors = {
           0: "000000",
-          1: "FFFFFF",
-          2: "FF0000" /* ... y así sucesivamente ... */,
         }
         color = indexedColors[cell.s.fill.bgColor.indexed] || "FFFFFF"
       }
@@ -277,24 +191,12 @@ const extractColor = (cell) => {
       } else if (cell.s.fill.color && cell.s.fill.color.theme !== undefined) {
         const themeColors = {
           0: "FFFFFF",
-          1: "000000",
-          2: "E7E6E6",
-          3: "44546A",
-          4: "4472C4",
-          5: "ED7D31", // Naranja
-          6: "A5A5A5", // Gris
-          7: "FFC000", // Amarillo
-          8: "5B9BD5", // Azul claro
-          9: "70AD47", // Verde
-          10: "FF0000", // Rojo
         }
         color = themeColors[cell.s.fill.color.theme] || "FFFFFF"
       } else if (cell.s.fill.color && cell.s.fill.color.indexed !== undefined) {
         // Usar los mismos colores indexados definidos anteriormente
         const indexedColors = {
-          0: "000000",
-          1: "FFFFFF",
-          2: "FF0000" /* ... y así sucesivamente ... */,
+          0: "000000"
         }
         color = indexedColors[cell.s.fill.color.indexed] || "FFFFFF"
       }
@@ -538,14 +440,6 @@ function FloorPlan() {
         const mockDevices = [
           { id: 1, nombre: "Dispositivo 1", serial: "SN001", modelo: "Modelo A", sede: 1 },
           { id: 2, nombre: "Dispositivo 2", serial: "SN002", modelo: "Modelo B", sede: 1 },
-          { id: 3, nombre: "Dispositivo 3", serial: "SN003", modelo: "Modelo C", sede: 2 },
-          { id: 4, nombre: "Dispositivo 4", serial: "SN004", modelo: "Modelo D", sede: 2 },
-          { id: 5, nombre: "Dispositivo 5", serial: "SN005", modelo: "Modelo E", sede: 3 },
-          { id: 6, nombre: "Dispositivo 6", serial: "SN006", modelo: "Modelo F", sede: 3 },
-          { id: 7, nombre: "Dispositivo 7", serial: "SN007", modelo: "Modelo G", sede: 1 },
-          { id: 8, nombre: "Dispositivo 8", serial: "SN008", modelo: "Modelo H", sede: 2 },
-          { id: 9, nombre: "Dispositivo 9", serial: "SN009", modelo: "Modelo I", sede: 3 },
-          { id: 10, nombre: "Dispositivo 10", serial: "SN010", modelo: "Modelo J", sede: 1 },
         ]
         console.log("Usando dispositivos de prueba:", mockDevices)
         setAllDevices(mockDevices)
@@ -862,6 +756,24 @@ function FloorPlan() {
           const range = XLSX.utils.decode_range(worksheet["!ref"])
           console.log("Rango de celdas:", range)
 
+          // Verificar si hay columnas adicionales que necesitamos agregar
+          const lastExcelColumn = XLSX.utils.encode_col(range.e.c)
+          const currentLastColumn = columns[columns.length - 1]
+
+          // Añadir columnas adicionales si es necesario
+          if (XLSX.utils.decode_col(lastExcelColumn) > XLSX.utils.decode_col(currentLastColumn)) {
+            const newColumns = [...columns]
+            let nextCol = getNextColumn(newColumns)
+
+            while (XLSX.utils.decode_col(nextCol) <= XLSX.utils.decode_col(lastExcelColumn)) {
+              newColumns.push(nextCol)
+              nextCol = getNextColumn(newColumns)
+            }
+
+            setColumns(newColumns)
+            showNotification(`Se han añadido ${newColumns.length - columns.length} columnas nuevas`, "success")
+          }
+
           // 7. Obtener información de celdas combinadas
           const mergedCellsInfo = worksheet["!merges"] || []
           console.log("Celdas combinadas detectadas:", mergedCellsInfo.length)
@@ -923,7 +835,7 @@ function FloorPlan() {
               color: cellColor,
               colorFuente: getContrastColor(cellColor),
               colorOriginal: colorInfo.originalColor,
-              piso: selectedPiso, // Usar el piso seleccionado actualmente
+              piso: selectedPiso, // Usar el piso seleccionado en el modal
               sede: selectedSede, // Asignar la sede seleccionada
               mergedCells: mergedCells,
               dispositivos: [], // Inicialmente sin dispositivos
@@ -1041,7 +953,7 @@ function FloorPlan() {
                 color: cellColor,
                 colorFuente: getContrastColor(cellColor),
                 colorOriginal: colorInfo.originalColor,
-                piso: selectedPiso, // Usar el piso seleccionado actualmente
+                piso: selectedPiso, // Usar el piso seleccionado en el modal
                 sede: selectedSede, // Asignar la sede seleccionada
                 mergedCells: [{ row: actualRow, col: colLetter }],
                 dispositivos: [], // Inicialmente sin dispositivos
@@ -3118,7 +3030,7 @@ function FloorPlan() {
         </div>
       )}
 
-      {/* Modal para seleccionar sede al importar */}
+      {/* Modal para seleccionar sede y piso al importar */}
       {isImportModalOpen && (
         <div className="modal-overlay">
           <div className="modal" style={{ maxWidth: "400px" }}>
@@ -3131,7 +3043,7 @@ function FloorPlan() {
             >
               <FaTimes />
             </button>
-            <h2 className="h11">Seleccionar Sede para Importación</h2>
+            <h2 className="h11">Seleccionar Sede y Piso para Importación</h2>
 
             <div style={{ marginBottom: "20px" }}>
               <p>Seleccione la sede donde se guardarán las posiciones importadas:</p>
@@ -3156,6 +3068,31 @@ function FloorPlan() {
                 {sedes.map((sede) => (
                   <option key={sede.id} value={sede.id}>
                     {sede.nombre}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div style={{ marginBottom: "20px" }}>
+              <p>Seleccione el piso donde se guardarán las posiciones importadas:</p>
+
+              <select
+                value={selectedPiso}
+                onChange={(e) => setSelectedPiso(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "10px",
+                  marginTop: "10px",
+                  borderRadius: "4px",
+                  border: "1px solid #444",
+                  backgroundColor: "#333",
+                  color: "#fff",
+                  fontSize: "16px",
+                }}
+              >
+                {PISOS.map((piso) => (
+                  <option key={piso.value} value={piso.value}>
+                    {piso.label}
                   </option>
                 ))}
               </select>

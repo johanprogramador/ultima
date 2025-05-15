@@ -106,7 +106,6 @@ urlpatterns = [
     
     #rutas para entrada y salida de dispositivos
     path('api/movimientos-por-sede/', views.movimientos_por_sede, name='movimientos-por-sede'),
-    path('api/importar-dispositivos/', views.ImportarDispositivosView.as_view(), name='importar-dispositivos'),
 ]
 
 

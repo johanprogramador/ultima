@@ -126,6 +126,14 @@ class Posicion(models.Model):
         ('reservado', 'Reservado'),
         ('inactivo', 'Inactivo'),
     ]
+    
+    PISOS = [
+        ('PISO1', 'P1'),
+        ('PISO2', 'P2'),
+        ('PISO3', 'P3'),
+        ('PISO4', 'P4'),
+        ('TORRE1', 'T1'),
+    ]
 
     MAX_DISPOSITIVOS = 5  # Límite máximo de dispositivos por posición
 
@@ -141,7 +149,7 @@ class Posicion(models.Model):
     borde = models.BooleanField(default=True)
     bordeDoble = models.BooleanField(default=False)
     bordeDetalle = models.JSONField(default=dict)
-    piso = models.CharField(max_length=50)
+    piso = models.CharField(max_length=50, choices=PISOS)
     sede = models.ForeignKey('Sede', on_delete=models.CASCADE, related_name="posiciones", null=True, blank=True)
     servicio = models.ForeignKey('Servicios', on_delete=models.SET_NULL, related_name="posiciones", null=True, blank=True)
     dispositivos = models.ManyToManyField('Dispositivo', related_name='posiciones', blank=True)

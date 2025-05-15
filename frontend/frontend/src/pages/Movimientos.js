@@ -33,7 +33,7 @@ const Movimientos = () => {
     posicion: "",
     fecha_inicio: "",
     fecha_fin: "",
-    dispositivo_id: "", // Cambiado de dispositivo a dispositivo_id
+    dispositivo_id: "",
   })
 
   // Estados para el modal de creación
@@ -41,21 +41,29 @@ const Movimientos = () => {
   const [posicionActual, setPosicionActual] = useState("")
   const [posicionNueva, setPosicionNueva] = useState("")
   const [dispositivoSeleccionado, setDispositivoSeleccionado] = useState("")
-  // eslint-disable-next-line no-unused-vars
-  const [busquedaPosicion, setBusquedaPosicion] = useState("")
   const [busquedaDispositivo, setBusquedaDispositivo] = useState("")
   const [detalle, setDetalle] = useState("")
   const [sedes, setSedes] = useState([])
   const [posiciones, setPosiciones] = useState([])
-  const [dispositivos, setDispositivos] = useState([]) // Para el modal
-  const [todosDispositivos, setTodosDispositivos] = useState([]) // Para el filtro
+  const [dispositivos, setDispositivos] = useState([])
+  const [todosDispositivos, setTodosDispositivos] = useState([])
   const [posicionesDestino, setPosicionesDestino] = useState([])
+  const [todasLasPosiciones, setTodasLasPosiciones] = useState([])
+  const [cargandoPosiciones, setCargandoPosiciones] = useState(false)
+  const [errorPosiciones, setErrorPosiciones] = useState(null)
+
+  // Nuevos estados para la selección jerárquica
+  const [pisosOrigen, setPisosOrigen] = useState([])
+  const [pisosDestino, setPisosDestino] = useState([])
+  const [pisoOrigenSeleccionado, setPisoOrigenSeleccionado] = useState("")
+  const [pisoDestinoSeleccionado, setPisoDestinoSeleccionado] = useState("")
+  const [posicionesPorPisoOrigen, setPosicionesPorPisoOrigen] = useState([])
+  const [posicionesPorPisoDestino, setPosicionesPorPisoDestino] = useState([])
 
   // Obtener datos iniciales
   useEffect(() => {
     obtenerSedes()
-    obtenerTodasLasPosiciones()
-    obtenerTodosDispositivos() // Nuevo método para cargar todos los dispositivos
+    obtenerTodosDispositivos()
     obtenerMovimientos()
   }, [paginacion.pagina])
 
@@ -80,7 +88,7 @@ const Movimientos = () => {
     }
   }
 
-  // Nuevo método para obtener todos los dispositivos
+  // Obtener todos los dispositivos
   const obtenerTodosDispositivos = async () => {
     try {
       const token = sessionStorage.getItem("token")
@@ -94,8 +102,6 @@ const Movimientos = () => {
           "Content-Type": "application/json",
         },
       })
-
-      console.log("Todos los dispositivos API response:", response.data)
 
       let dispositivosData = []
       if (Array.isArray(response.data)) {
@@ -126,142 +132,106 @@ const Movimientos = () => {
     }
   }
 
-  // Obtener todas las posiciones
-  const obtenerTodasLasPosiciones = async () => {
+  // Obtener todas las posiciones de una sede (con paginación)
+  const obtenerTodasLasPosicionesDeSede = async (sedeId) => {
+    if (!sedeId) {
+      setPosiciones([])
+      setPosicionesDestino([])
+      setPisosOrigen([])
+      setPisosDestino([])
+      setTodasLasPosiciones([])
+      return
+    }
+
+    setCargandoPosiciones(true)
+    setErrorPosiciones(null)
+
     try {
       const token = sessionStorage.getItem("token")
-      if (!token) {
-        throw new Error("No se encontró token de autenticación")
-      }
+      let allPositions = []
+      let nextPage = 1
+      let hasMore = true
 
-      const response = await axios.get("http://localhost:8000/api/posiciones/", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      })
-
-      console.log("Todas las posiciones API response:", response.data)
-
-      let posicionesData = []
-      if (Array.isArray(response.data)) {
-        posicionesData = response.data
-      } else if (response.data?.results && Array.isArray(response.data.results)) {
-        posicionesData = response.data.results
-      } else if (response.data?.data && Array.isArray(response.data.data)) {
-        posicionesData = response.data.data
-      } else if (response.data?.posiciones && Array.isArray(response.data.posiciones)) {
-        posicionesData = response.data.posiciones
-      } else {
-        console.warn("Formato de respuesta no reconocido para todas las posiciones:", response.data)
-        posicionesData = []
-      }
-
-      // Store all positions in state for reference
-      const todasLasPosiciones = posicionesData
-
-      // If we have a sede filter, filter the positions by sede
-      if (filtros.sede) {
-        const posicionesFiltradas = todasLasPosiciones.filter(
-          (pos) => pos.sede === filtros.sede || pos.sede_id === filtros.sede || pos.sede?.id === filtros.sede,
-        )
-        setPosiciones(posicionesFiltradas)
-      } else {
-        // If no sede filter, show all positions
-        setPosiciones(todasLasPosiciones)
-      }
-    } catch (error) {
-      console.error("Error obteniendo todas las posiciones:", error)
-      mostrarNotificacion("Error al cargar las posiciones", "error")
-    }
-  }
-
-  // Obtener posiciones por sede
-
-  const obtenerPosicionesPorSede = async (sedeId) => {
-    try {
-      if (!sedeId) {
-        setPosiciones([]);
-        setPosicionesDestino([]);
-        return;
-      }
-  
-      const token = sessionStorage.getItem('token');
-      const response = await axios.get(
-        `http://localhost:8000/api/posiciones/?sede=${sedeId}`,
-        {
+      while (hasMore) {
+        const response = await axios.get("http://localhost:8000/api/posiciones/", {
+          params: {
+            sede: sedeId,
+            page: nextPage,
+            page_size: 100,
+          },
           headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        })
+
+        let posicionesData = []
+
+        // Manejar diferentes formatos de respuesta
+        if (Array.isArray(response.data)) {
+          posicionesData = response.data
+        } else if (response.data?.results) {
+          posicionesData = response.data.results
+        } else if (response.data?.data) {
+          posicionesData = response.data.data
+        } else if (response.data?.posiciones) {
+          posicionesData = response.data.posiciones
         }
-      );
-  
-      // Procesar la respuesta según diferentes formatos posibles
-      let posicionesData = [];
-      
-      if (Array.isArray(response.data)) {
-        posicionesData = response.data;
-      } else if (response.data?.results) {
-        posicionesData = response.data.results;
-      } else if (response.data?.data) {
-        posicionesData = response.data.data;
-      } else {
-        posicionesData = [];
+
+        allPositions = [...allPositions, ...posicionesData]
+
+        // Verificar si hay más páginas
+        if (response.data?.next) {
+          nextPage++
+        } else {
+          hasMore = false
+        }
       }
-  
-      // Formatear posiciones para asegurar estructura consistente
-      const posicionesFormateadas = posicionesData.map(pos => ({
-        id: pos.id || pos._id || '',
-        nombre: pos.nombre || pos.name || '',
-        piso: pos.piso || pos.floor || '',
-        sede: pos.sede || pos.sede_id || null
-      }));
-  
-      // Filtrar solo las posiciones que pertenecen a la sede seleccionada
-      const posicionesFiltradas = posicionesFormateadas.filter(
-        // eslint-disable-next-line eqeqeq
-        pos => pos.sede == sedeId
-      );
-  
-      setPosiciones(posicionesFiltradas);
-      setPosicionesDestino(posicionesFiltradas);
-      
-      // Resetear posición seleccionada al cambiar de sede
-      setFiltros(prev => ({
-        ...prev,
-        posicion: ""
-      }));
-  
+
+      // Formatear posiciones
+      const posicionesFormateadas = allPositions.map((pos) => ({
+        id: pos.id || pos._id || "",
+        nombre: pos.nombre || pos.name || "",
+        piso: pos.piso || pos.floor || "",
+        sede: pos.sede || pos.sede_id || null,
+      }))
+
+      setTodasLasPosiciones(posicionesFormateadas)
+      setPosiciones(posicionesFormateadas)
+      setPosicionesDestino(posicionesFormateadas)
+
+      // Extraer pisos únicos y ordenarlos
+      const pisosUnicos = [...new Set(posicionesFormateadas.map((pos) => pos.piso))]
+        .filter(piso => piso !== undefined && piso !== null && piso !== "")
+        .sort((a, b) => {
+          // Ordenar numéricamente si son números, alfabéticamente si no
+          if (!isNaN(a) && !isNaN(b)) return Number(a) - Number(b)
+          return String(a).localeCompare(String(b))
+        })
+
+      setPisosOrigen(pisosUnicos)
+      setPisosDestino(pisosUnicos)
     } catch (error) {
-      console.error("Error obteniendo posiciones:", error);
-      
-      let mensajeError = "Error al cargar las posiciones";
-      
-      if (error.response) {
-        if (error.response.status === 401) {
-          mensajeError = "No autorizado - Por favor inicie sesión nuevamente";
-        } else if (error.response.status === 404) {
-          mensajeError = "Sede no encontrada";
-        } else if (error.response.data) {
-          mensajeError = error.response.data.error || 
-                         error.response.data.detail || 
-                         JSON.stringify(error.response.data);
-        }
-      } else if (error.request) {
-        mensajeError = "El servidor no respondió. Verifique su conexión.";
-      } else {
-        mensajeError = error.message;
-      }
-      
-      mostrarNotificacion(mensajeError, "error");
-      setPosiciones([]);
-      setPosicionesDestino([]);
+      console.error("Error obteniendo posiciones:", error)
+      setErrorPosiciones("Error al cargar las posiciones")
+      mostrarNotificacion("Error al cargar las posiciones", "error")
+      setPosiciones([])
+      setPosicionesDestino([])
+      setPisosOrigen([])
+      setPisosDestino([])
+      setTodasLasPosiciones([])
+    } finally {
+      setCargandoPosiciones(false)
     }
   }
 
   // Obtener dispositivos por posición
   const obtenerDispositivosPorPosicion = async (posicionId) => {
+    if (!posicionId) {
+      setDispositivos([])
+      return
+    }
+
     try {
       const token = sessionStorage.getItem("token")
       const respuesta = await axios.get("http://localhost:8000/api/dispositivos/", {
@@ -270,8 +240,6 @@ const Movimientos = () => {
           Authorization: `Bearer ${token}`,
         },
       })
-
-      console.log("Dispositivos API response:", respuesta.data)
 
       let dispositivosData = []
       if (Array.isArray(respuesta.data)) {
@@ -286,8 +254,6 @@ const Movimientos = () => {
         console.warn("Formato de respuesta no reconocido para dispositivos:", respuesta.data)
         dispositivosData = []
       }
-
-      console.log("Dispositivos procesados:", dispositivosData)
 
       const dispositivosFormateados = dispositivosData.map((disp) => ({
         id: disp.id || disp._id || "",
@@ -304,14 +270,21 @@ const Movimientos = () => {
     }
   }
 
+  // Función optimizada para filtrar posiciones
+  const filtrarPosiciones = (posiciones, busqueda) => {
+    if (!busqueda) return posiciones
+
+    const termino = busqueda.toLowerCase()
+    return posiciones.filter(
+      (pos) => pos.nombre?.toLowerCase().includes(termino) || pos.piso?.toString().toLowerCase().includes(termino),
+    )
+  }
+
   // Cambiar filtro
   const cambiarFiltro = (nombre, valor) => {
-    // Actualizar el estado de filtros
     setFiltros((prevFiltros) => ({ ...prevFiltros, [nombre]: valor }))
 
-    // Si el cambio es en el dispositivo, aplicar filtros automáticamente
     if (nombre === "dispositivo_id") {
-      // Pequeña demora para asegurar que el estado se actualice
       setTimeout(() => {
         aplicarFiltros()
       }, 100)
@@ -345,25 +318,20 @@ const Movimientos = () => {
         throw new Error("No se encontró token de autenticación")
       }
 
-      // Crear un objeto con los parámetros que no estén vacíos
       const params = {
         page: paginacion.pagina,
         page_size: paginacion.itemsPorPagina,
       }
 
-      // Añadir solo los filtros que tengan valor
       Object.entries(filtrosAplicar).forEach(([key, value]) => {
         if (value !== "" && value !== undefined && value !== null) {
-          // Si es dispositivo_id, usar el parámetro correcto para la API
           if (key === "dispositivo_id") {
-            params["dispositivo"] = value // Asegúrate de que este es el nombre del parámetro que espera tu API
+            params["dispositivo"] = value
           } else {
             params[key] = value
           }
         }
       })
-
-      console.log("Parámetros de búsqueda:", params)
 
       const response = await axios.get("http://localhost:8000/api/movimientos/", {
         params,
@@ -399,7 +367,6 @@ const Movimientos = () => {
       }))
 
       const movimientosFormateados = movimientosData.map((mov) => {
-        // Extract the nested objects from the API response
         const dispositivo_info = mov.dispositivo_info || {}
         const posicion_origen_info = mov.posicion_origen_info || {}
         const posicion_destino_info = mov.posicion_destino_info || {}
@@ -519,31 +486,64 @@ const Movimientos = () => {
   // Manejar cambio de sede
   const cambiarSede = async (e) => {
     const sedeId = e.target.value
+    setSedeSeleccionada(sedeId)
+    setPosicionActual("")
+    setDispositivoSeleccionado("")
+    setPosicionNueva("")
+    setBusquedaDispositivo("")
+    setPisoOrigenSeleccionado("")
+    setPisoDestinoSeleccionado("")
+    setPosicionesPorPisoOrigen([])
+    setPosicionesPorPisoDestino([])
 
-    try {
-      setSedeSeleccionada(sedeId)
-      setPosicionActual("")
-      setDispositivoSeleccionado("")
-      setPosicionNueva("")
-      setBusquedaPosicion("")
-      setBusquedaDispositivo("")
+    setFiltros((prev) => ({
+      ...prev,
+      sede: sedeId,
+      posicion: "",
+      dispositivo_id: "",
+    }))
 
-      setFiltros((prev) => ({
-        ...prev,
-        sede: sedeId,
-        posicion: "",
-        dispositivo_id: "",
-      }))
+    if (sedeId) {
+      await obtenerTodasLasPosicionesDeSede(sedeId)
+    } else {
+      setPosiciones([])
+      setPosicionesDestino([])
+      setPisosOrigen([])
+      setPisosDestino([])
+      setTodasLasPosiciones([])
+    }
+  }
 
-      if (sedeId) {
-        await obtenerPosicionesPorSede(sedeId)
-      } else {
-        setPosiciones([])
-        setPosicionesDestino([])
-      }
-    } catch (error) {
-      console.error("Error al cambiar sede:", error)
-      mostrarNotificacion("Error al cargar datos de la sede", "error")
+  // Manejar cambio de piso origen
+  const cambiarPisoOrigen = (e) => {
+    const piso = e.target.value
+    setPisoOrigenSeleccionado(piso)
+    setPosicionActual("")
+    setDispositivoSeleccionado("")
+
+    if (piso && todasLasPosiciones.length > 0) {
+      const posicionesFiltradas = todasLasPosiciones.filter(
+        (pos) => String(pos.piso) === String(piso)
+      )
+      setPosicionesPorPisoOrigen(posicionesFiltradas)
+    } else {
+      setPosicionesPorPisoOrigen([])
+    }
+  }
+
+  // Manejar cambio de piso destino
+  const cambiarPisoDestino = (e) => {
+    const piso = e.target.value
+    setPisoDestinoSeleccionado(piso)
+    setPosicionNueva("")
+
+    if (piso && todasLasPosiciones.length > 0) {
+      const posicionesFiltradas = todasLasPosiciones.filter(
+        (pos) => String(pos.piso) === String(piso)
+      )
+      setPosicionesPorPisoDestino(posicionesFiltradas)
+    } else {
+      setPosicionesPorPisoDestino([])
     }
   }
 
@@ -555,6 +555,8 @@ const Movimientos = () => {
 
     if (posicionId) {
       await obtenerDispositivosPorPosicion(posicionId)
+    } else {
+      setDispositivos([])
     }
   }
 
@@ -586,7 +588,6 @@ const Movimientos = () => {
       dispositivo_id: "",
     })
 
-    // Después de reiniciar los filtros, actualizar la tabla
     setTimeout(() => {
       obtenerMovimientos()
     }, 100)
@@ -603,8 +604,13 @@ const Movimientos = () => {
     setPosicionActual("")
     setPosicionNueva("")
     setDispositivoSeleccionado("")
-    setBusquedaPosicion("")
     setBusquedaDispositivo("")
+    setBusquedaPosicionOrigen("")
+    setBusquedaPosicionDestino("")
+    setPisoOrigenSeleccionado("")
+    setPisoDestinoSeleccionado("")
+    setPosicionesPorPisoOrigen([])
+    setPosicionesPorPisoDestino([])
     setDetalle("")
     setDialogoAbierto(true)
   }
@@ -664,35 +670,13 @@ const Movimientos = () => {
     setDialogoDetallesAbierto(false)
   }
 
-  // Filtrar posiciones origen según búsqueda
-  const posicionesFiltradas = Array.isArray(posiciones)
-    ? posiciones.filter(
-        (pos) =>
-          (pos?.nombre?.toLowerCase() || "").includes(busquedaPosicionOrigen.toLowerCase()) ||
-          (pos?.piso?.toLowerCase() || "").includes(busquedaPosicionOrigen.toLowerCase()),
-      )
-    : []
-
-  // Filtrar dispositivos según búsqueda
-  const dispositivosFiltrados = Array.isArray(dispositivos)
-    ? dispositivos.filter(
-        (disp) =>
-          (disp?.serial?.toLowerCase() || "").includes(busquedaDispositivo.toLowerCase()) ||
-          (disp?.modelo?.toLowerCase() || "").includes(busquedaDispositivo.toLowerCase()) ||
-          (disp?.marca?.toLowerCase() || "").includes(busquedaDispositivo.toLowerCase()),
-      )
-    : []
-
-  // Filtrar posiciones destino (excluyendo la actual)
-  const posicionesDestinoFiltradas = Array.isArray(posicionesDestino)
-    ? posicionesDestino
-        .filter((pos) => pos?.id !== posicionActual)
-        .filter(
-          (pos) =>
-            (pos?.nombre?.toLowerCase() || "").includes(busquedaPosicionDestino.toLowerCase()) ||
-            (pos?.piso?.toLowerCase() || "").includes(busquedaPosicionDestino.toLowerCase()),
-        )
-    : []
+  // Filtrar posiciones y dispositivos
+  const posicionesFiltradas = filtrarPosiciones(posicionesPorPisoOrigen, busquedaPosicionOrigen)
+  const posicionesDestinoFiltradas = filtrarPosiciones(
+    posicionesPorPisoDestino.filter((pos) => pos.id !== posicionActual),
+    busquedaPosicionDestino,
+  )
+  const dispositivosFiltrados = filtrarPosiciones(dispositivos, busquedaDispositivo)
 
   return (
     <div className="dashboard-container">
@@ -723,7 +707,7 @@ const Movimientos = () => {
         </div>
       </div>
 
-      {/* Sección de filtros actualizada con dropdown de dispositivos */}
+      {/* Sección de filtros */}
       <div className="filter-card">
         <div className="filter-grid">
           <div className="filter-item">
@@ -746,10 +730,10 @@ const Movimientos = () => {
             />
           </div>
 
-          {/* Dropdown de dispositivos mejorado */}
           <div className="filter-item">
             <label htmlFor="dispositivo_id">Dispositivo</label>
-            <select className="color-letra"
+            <select
+              className="color-letra"
               id="dispositivo_id"
               value={filtros.dispositivo_id}
               onChange={(e) => cambiarFiltro("dispositivo_id", e.target.value)}
@@ -770,7 +754,6 @@ const Movimientos = () => {
           </div>
         </div>
 
-        {/* Mostrar mensaje cuando se filtra por dispositivo */}
         {filtros.dispositivo_id && (
           <div className="filter-message">
             <p>
@@ -910,9 +893,16 @@ const Movimientos = () => {
             <div className="modal-content">
               <div className="modal-grid">
                 <div className="modal-column">
+                  {/* Selección de Sede */}
                   <div className="form-group">
                     <label htmlFor="sede-modal">Sede</label>
-                    <select className="color-letra" id="sede-modal" value={sedeSeleccionada} onChange={cambiarSede} required>
+                    <select
+                      className="color-letra"
+                      id="sede-modal"
+                      value={sedeSeleccionada}
+                      onChange={cambiarSede}
+                      required
+                    >
                       <option value="">Seleccionar sede</option>
                       {Array.isArray(sedes) &&
                         sedes.map((sede) => (
@@ -925,77 +915,118 @@ const Movimientos = () => {
 
                   {sedeSeleccionada && (
                     <>
+                      {/* Selección de Piso Origen */}
                       <div className="form-group">
-                        <label htmlFor="search-posicion">Buscar posición actual</label>
-                        <div className="search-input">
-                          <span className="search-icon">🔍</span>
-                          <input
-                            id="search-posicion"
-                            type="text"
-                            value={busquedaPosicionOrigen}
-                            onChange={(e) => setBusquedaPosicionOrigen(e.target.value)}
-                            placeholder="Buscar posición..."
-                          />
-                        </div>
-                      </div>
-                      <div className="form-group">
-                        <label htmlFor="posicion-actual">Posición Actual</label>
-                        <select className="color-letra" id="posicion-actual" value={posicionActual} onChange={cambiarPosicionActual} required>
-                          <option value="">Seleccionar posición</option>
-                          {Array.isArray(posiciones) && posiciones.length > 0 ? (
-                            posicionesFiltradas.map((pos) => (
-                              <option key={pos.id} value={pos.id}>
-                                {pos.nombre} (Piso {pos.piso})
-                              </option>
-                            ))
-                          ) : (
-                            <option value="" disabled>
-                              No hay posiciones disponibles
-                            </option>
-                          )}
-                        </select>
-                      </div>
-                    </>
-                  )}
-
-                  {posicionActual && (
-                    <>
-                      <div className="form-group">
-                        <label htmlFor="search-dispositivo">Buscar dispositivo</label>
-                        <div className="search-input">
-                          <span className="search-icon">🔍</span>
-                          <input
-                            id="search-dispositivo"
-                            type="text"
-                            value={busquedaDispositivo}
-                            onChange={(e) => setBusquedaDispositivo(e.target.value)}
-                            placeholder="Buscar por serial o modelo..."
-                          />
-                        </div>
-                      </div>
-
-                      <div className="form-group">
-                        <label htmlFor="dispositivo-modal">Dispositivo</label>
-                        <select className="color-letra"
-                          id="dispositivo-modal"
-                          value={dispositivoSeleccionado}
-                          onChange={(e) => setDispositivoSeleccionado(e.target.value)}
+                        <label htmlFor="piso-origen">Piso (Origen)</label>
+                        <select
+                          className="color-letra"
+                          id="piso-origen"
+                          value={pisoOrigenSeleccionado}
+                          onChange={cambiarPisoOrigen}
                           required
                         >
-                          <option value="">Seleccionar dispositivo</option>
-                          {Array.isArray(dispositivos) && dispositivos.length > 0 ? (
-                            dispositivosFiltrados.map((disp) => (
-                              <option key={disp.id} value={disp.id}>
-                                {disp.marca} {disp.modelo} ({disp.serial})
-                              </option>
-                            ))
-                          ) : (
-                            <option value="" disabled>
-                              No hay dispositivos disponibles
+                          <option value="">Seleccionar piso</option>
+                          {pisosOrigen.map((piso) => (
+                            <option key={piso} value={piso}>
+                              Piso {piso}
                             </option>
-                          )}
+                          ))}
                         </select>
                       </div>
+
+                      {pisoOrigenSeleccionado && (
+                        <>
+                          {/* Búsqueda de Posición Origen */}
+                          <div className="form-group">
+                            <label htmlFor="search-posicion-origen">Buscar posición origen</label>
+                            <div className="search-input">
+                              <span className="search-icon">🔍</span>
+                              <input
+                                id="search-posicion-origen"
+                                type="text"
+                                value={busquedaPosicionOrigen}
+                                onChange={(e) => setBusquedaPosicionOrigen(e.target.value)}
+                                placeholder="Buscar posición..."
+                              />
+                            </div>
+                          </div>
+
+                          {/* Selección de Posición Origen */}
+                          <div className="form-group">
+                            <label htmlFor="posicion-actual">Posición Origen</label>
+                            {cargandoPosiciones ? (
+                              <div className="loading-options">Cargando posiciones...</div>
+                            ) : errorPosiciones ? (
+                              <div className="error-options">{errorPosiciones}</div>
+                            ) : (
+                              <div className="select-with-scroll">
+                                <select
+                                  className="color-letra"
+                                  id="posicion-actual"
+                                  value={posicionActual}
+                                  onChange={cambiarPosicionActual}
+                                  required
+                                  size={5}
+                                >
+                                  <option value="">Seleccionar posición</option>
+                                  {posicionesFiltradas.map((pos) => (
+                                    <option key={pos.id} value={pos.id}>
+                                      {pos.nombre} (Piso {pos.piso})
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            )}
+                          </div>
+                        </>
+                      )}
+
+                      {posicionActual && (
+                        <>
+                          {/* Búsqueda de Dispositivo */}
+                          <div className="form-group">
+                            <label htmlFor="search-dispositivo">Buscar dispositivo</label>
+                            <div className="search-input">
+                              <span className="search-icon">🔍</span>
+                              <input
+                                id="search-dispositivo"
+                                type="text"
+                                value={busquedaDispositivo}
+                                onChange={(e) => setBusquedaDispositivo(e.target.value)}
+                                placeholder="Buscar por serial o modelo..."
+                              />
+                            </div>
+                          </div>
+
+                          {/* Selección de Dispositivo */}
+                          <div className="form-group">
+                            <label htmlFor="dispositivo-modal">Dispositivo</label>
+                            <div className="select-with-scroll">
+                              <select
+                                className="color-letra"
+                                id="dispositivo-modal"
+                                value={dispositivoSeleccionado}
+                                onChange={(e) => setDispositivoSeleccionado(e.target.value)}
+                                required
+                                size={5}
+                              >
+                                <option value="">Seleccionar dispositivo</option>
+                                {Array.isArray(dispositivos) && dispositivos.length > 0 ? (
+                                  dispositivosFiltrados.map((disp) => (
+                                    <option key={disp.id} value={disp.id}>
+                                      {disp.marca} {disp.modelo} ({disp.serial})
+                                    </option>
+                                  ))
+                                ) : (
+                                  <option value="" disabled>
+                                    No hay dispositivos disponibles
+                                  </option>
+                                )}
+                              </select>
+                            </div>
+                          </div>
+                        </>
+                      )}
                     </>
                   )}
                 </div>
@@ -1003,38 +1034,67 @@ const Movimientos = () => {
                 <div className="modal-column">
                   {sedeSeleccionada && (
                     <>
+                      {/* Selección de Piso Destino */}
                       <div className="form-group">
-                        <label htmlFor="search-posicion-destino">Buscar posición destino</label>
-                        <div className="search-input">
-                          <span className="search-icon">🔍</span>
-                          <input
-                            id="search-posicion-destino"
-                            type="text"
-                            value={busquedaPosicionDestino}
-                            onChange={(e) => setBusquedaPosicionDestino(e.target.value)}
-                            placeholder="Buscar posición..."
-                          />
-                        </div>
-                      </div>
-
-                      <div className="form-group">
-                        <label htmlFor="posicion-nueva">Posición Destino</label>
-                        <select className="color-letra" id="posicion-nueva" value={posicionNueva} onChange={cambiarPosicionNueva} required>
-                          <option value="">Seleccionar nueva posición</option>
-                          {Array.isArray(posicionesDestino) && posicionesDestino.length > 0 ? (
-                            posicionesDestinoFiltradas.map((pos) => (
-                              <option key={pos.id} value={pos.id}>
-                                {pos.nombre} (Piso {pos.piso})
-                              </option>
-                            ))
-                          ) : (
-                            <option value="" disabled>
-                              No hay posiciones disponibles
+                        <label htmlFor="piso-destino">Piso (Destino)</label>
+                        <select
+                          className="color-letra"
+                          id="piso-destino"
+                          value={pisoDestinoSeleccionado}
+                          onChange={cambiarPisoDestino}
+                          required
+                        >
+                          <option value="">Seleccionar piso</option>
+                          {pisosDestino.map((piso) => (
+                            <option key={piso} value={piso}>
+                              Piso {piso}
                             </option>
-                          )}
+                          ))}
                         </select>
                       </div>
 
+                      {pisoDestinoSeleccionado && (
+                        <>
+                          {/* Búsqueda de Posición Destino */}
+                          <div className="form-group">
+                            <label htmlFor="search-posicion-destino">Buscar posición destino</label>
+                            <div className="search-input">
+                              <span className="search-icon">🔍</span>
+                              <input
+                                id="search-posicion-destino"
+                                type="text"
+                                value={busquedaPosicionDestino}
+                                onChange={(e) => setBusquedaPosicionDestino(e.target.value)}
+                                placeholder="Buscar posición..."
+                              />
+                            </div>
+                          </div>
+
+                          {/* Selección de Posición Destino */}
+                          <div className="form-group">
+                            <label htmlFor="posicion-nueva">Posición Destino</label>
+                            <div className="select-with-scroll">
+                              <select
+                                className="color-letra"
+                                id="posicion-nueva"
+                                value={posicionNueva}
+                                onChange={cambiarPosicionNueva}
+                                required
+                                size={5}
+                              >
+                                <option value="">Seleccionar nueva posición</option>
+                                {posicionesDestinoFiltradas.map((pos) => (
+                                  <option key={pos.id} value={pos.id}>
+                                    {pos.nombre} (Piso {pos.piso})
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                        </>
+                      )}
+
+                      {/* Detalles del Movimiento */}
                       <div className="form-group">
                         <label htmlFor="detalle">Detalle del Movimiento</label>
                         <textarea
@@ -1156,22 +1216,3 @@ const Movimientos = () => {
 }
 
 export default Movimientos
-
-// Añadir estilos para el mensaje de filtro
-// Puedes agregar esto al final del archivo o en tu archivo CSS
-// Añade estos estilos a tu archivo CSS
-/*
-.filter-message {
-  margin-top: 10px;
-  padding: 8px 12px;
-  background-color: #e8f4fd;
-  border-radius: 4px;
-  border-left: 4px solid #2196f3;
-}
-
-.filter-message p {
-  margin: 0;
-  color: #0d47a1;
-  font-weight: 500;
-}
-*/
