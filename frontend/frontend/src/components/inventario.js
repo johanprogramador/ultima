@@ -4,7 +4,7 @@
 import { useEffect, useState, useCallback } from "react"
 import axios from "axios"
 import { useAuth } from "./auth"
-import { Search, Trash2, FileText, ChevronLeft, ChevronRight } from "lucide-react"
+import { Search, Trash2, FileText, ChevronLeft, ChevronRight, AlertCircle, CheckCircle } from "lucide-react"
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts"
 import * as XLSX from "xlsx"
 import "../styles/Inventario.css"
@@ -20,7 +20,12 @@ const Inventario = () => {
   const [currentPage, setCurrentPage] = useState(1)
   const [error, setError] = useState(null)
   const [success, setSuccess] = useState(null)
-  const itemsPerPage = 7
+  const [importProgress, setImportProgress] = useState(null)
+  const [importResults, setImportResults] = useState(null)
+  const [itemsPerPage] = useState(7)
+  const [showSedeSelector, setShowSedeSelector] = useState(false)
+  const [selectedImportSede, setSelectedImportSede] = useState("")
+  const [selectedFile, setSelectedFile] = useState(null)
 
   const fetchSedes = useCallback(async () => {
     try {
@@ -178,17 +183,14 @@ const Inventario = () => {
 
       const ws = XLSX.utils.json_to_sheet(
         dispositivos.map((dispositivo) => {
-          const posicionInfo = dispositivo.posicion || {}
-          const servicioInfo = posicionInfo.servicio || {}
-
           return {
-            PISO: dispositivo.piso || posicionInfo.piso || "",
-            POSICION: posicionInfo.nombre || "",
-            SERVICIO: servicioInfo.nombre || "",
-            CODIGO_ANALITICO: servicioInfo.codigo_analitico || "",
+            PISO: dispositivo.piso || "",
+            POSICION: dispositivo.posicion_nombre || "",
+            SERVICIO: dispositivo.servicio_nombre || "",
+            CODIGO_ANALITICO: dispositivo.codigo_analitico || "",
             TIPO_DISPOSITIVO: dispositivo.tipo || "",
             FABRICANTE: dispositivo.marca || "",
-            SERIAL: dispositivo.serial || "",
+            SERIAL: dispositivo.serial || "Sin serial",
             PLACA_CU: dispositivo.placa_cu || "",
             SISTEMA_OPERATIVO: dispositivo.sistema_operativo || "",
             PROCESADOR: dispositivo.procesador || "",
@@ -224,111 +226,141 @@ const Inventario = () => {
 
     if (!file.name.endsWith(".xlsx") && !file.name.endsWith(".xls")) {
       setError("Por favor, suba un archivo Excel (.xlsx o .xls)")
+      event.target.value = ""
       return
     }
+
+    if (file.size > 5 * 1024 * 1024) {
+      const confirm = window.confirm("El archivo es grande (>5MB). ¿Está seguro de continuar con la importación?")
+      if (!confirm) {
+        event.target.value = ""
+        return
+      }
+    }
+
+    try {
+      // Leer el archivo Excel
+      const data = await file.arrayBuffer()
+      const workbook = XLSX.read(data)
+      const worksheet = workbook.Sheets[workbook.SheetNames[0]]
+      let jsonData = XLSX.utils.sheet_to_json(worksheet)
+
+      // Convertir todos los valores de texto a mayúsculas
+      jsonData = jsonData.map(row => {
+        const newRow = {}
+        for (const key in row) {
+          if (typeof row[key] === 'string') {
+            newRow[key] = row[key].toUpperCase().trim()
+          } else {
+            newRow[key] = row[key]
+          }
+        }
+        return newRow
+      })
+
+      // Crear un nuevo archivo Excel con los datos en mayúsculas
+      const newWorkbook = XLSX.utils.book_new()
+      const newWorksheet = XLSX.utils.json_to_sheet(jsonData)
+      XLSX.utils.book_append_sheet(newWorkbook, newWorksheet, "Datos")
+      
+      // Convertir a blob para enviar
+      const excelBuffer = XLSX.write(newWorkbook, { bookType: 'xlsx', type: 'array' })
+      const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+      const newFile = new File([blob], file.name, { type: file.type })
+
+      setSelectedFile(newFile)
+      setSelectedImportSede("")
+      setShowSedeSelector(true)
+    } catch (error) {
+      console.error("Error al procesar el archivo:", error)
+      setError("Error al procesar el archivo Excel")
+      event.target.value = ""
+    }
+  }
+
+  const procesarImportacion = async () => {
+    if (!selectedImportSede) {
+      setError("Por favor, seleccione una sede.")
+      return
+    }
+
+    if (!selectedFile) {
+      setError("No se encontró el archivo para importar.")
+      return
+    }
+
+    setShowSedeSelector(false)
 
     try {
       setLoading(true)
       setError(null)
+      setSuccess(null)
+      setImportProgress("Preparando importación...")
+      setImportResults(null)
 
-      const reader = new FileReader()
-      reader.onload = async (e) => {
-        try {
-          const data = new Uint8Array(e.target.result)
-          const workbook = XLSX.read(data, { type: "array" })
-          const sheetName = workbook.SheetNames[0]
-          const worksheet = workbook.Sheets[sheetName]
-          let jsonData = XLSX.utils.sheet_to_json(worksheet)
+      const formData = new FormData()
+      formData.append("file", selectedFile)
+      formData.append("sede_id", selectedImportSede)
 
-          // Procesar y estandarizar los datos
-          const processedData = jsonData.map((row) => {
-            const newRow = {}
-            
-            // Convertir a mayúsculas y limpiar espacios
-            Object.keys(row).forEach((key) => {
-              if (typeof row[key] === "string") {
-                newRow[key] = row[key].toUpperCase().trim()
-              } else {
-                newRow[key] = row[key]
-              }
-            })
+      const response = await axios.post("http://127.0.0.1:8000/api/importar-dispositivos/", formData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+          Authorization: `Bearer ${token}`,
+        },
+        onUploadProgress: (progressEvent) => {
+          if (progressEvent.total) {
+            const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total)
+            setImportProgress(`Enviando datos: ${percentCompleted}%`)
+          }
+        },
+      })
 
-            // Estandarizar formato del piso
-            let piso = ""
-            if (newRow.PISO) {
-              piso = newRow.PISO
-                .replace(/PISO\s*/i, "")
-                .replace(/P\s*/i, "")
-                .trim()
-              
-              if (piso.match(/^\d+$/)) {
-                piso = `PISO${piso}`
-              } else if (piso.toUpperCase() === "TORRE") {
-                piso = "TORRE"
-              }
-            }
+      setImportProgress(null)
+      setImportResults(response.data)
 
-            return {
-              ...newRow,
-              PISO: piso || newRow.PISO || "",
-              POSICION: newRow.POSICION || "",
-              SERVICIO: newRow.SERVICIO || "",
-              CODIGO_ANALITICO: newRow.CODIGO_ANALITICO || "",
-              TIPO_DISPOSITIVO: newRow.TIPO_DISPOSITIVO || "",
-              FABRICANTE: newRow.FABRICANTE || "",
-              SERIAL: newRow.SERIAL || "",
-              PLACA_CU: newRow.PLACA_CU || "",
-              SISTEMA_OPERATIVO: newRow.SISTEMA_OPERATIVO || "",
-              PROCESADOR: newRow.PROCESADOR || "",
-              DISCO_DURO: newRow.DISCO_DURO || "",
-              MEMORIA_RAM: newRow.MEMORIA_RAM || "",
-              PROVEEDOR: newRow.PROVEEDOR || "",
-              ESTADO_PROPIEDAD: newRow.ESTADO_PROPIEDAD || "",
-              RAZON_SOCIAL: newRow.RAZON_SOCIAL || "",
-              UBICACION: newRow.UBICACION || "",
-              ESTADO: newRow.ESTADO || "",
-              OBSERVACION: newRow.OBSERVACION || "",
-              REGIMEN: newRow.REGIMEN || "",
-              SEDE: newRow.SEDE || ""
-            }
-          })
-
-          // Convertir de nuevo a Excel para enviar
-          const newWorksheet = XLSX.utils.json_to_sheet(processedData)
-          const newWorkbook = XLSX.utils.book_new()
-          XLSX.utils.book_append_sheet(newWorkbook, newWorksheet, "Datos")
-
-          const excelBuffer = XLSX.write(newWorkbook, { bookType: "xlsx", type: "array" })
-          const blob = new Blob([excelBuffer], {
-            type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-          })
-          
-          const formData = new FormData()
-          formData.append("file", new File([blob], file.name, { type: file.type }))
-
-          await axios.post("http://127.0.0.1:8000/api/importar-dispositivos/", formData, {
-            headers: {
-              "Content-Type": "multipart/form-data",
-              Authorization: `Bearer ${token}`,
-            },
-            validateStatus: (status) => status >= 200 && status < 300,
-          })
-
-          setSuccess("Datos importados correctamente")
-          setTimeout(() => setSuccess(null), 5000)
-          fetchDispositivos()
-        } catch (error) {
-          console.error("Error al procesar el archivo Excel:", error)
-          setError(`Error al procesar el archivo Excel: ${error.message}`)
-        }
+      if (response.data.errors && response.data.errors.length > 0) {
+        setError(`Importación completada con ${response.data.errors.length} errores`)
+      } else {
+        setSuccess(`Importación exitosa: ${response.data.created} creados, ${response.data.updated} actualizados`)
       }
-      reader.readAsArrayBuffer(file)
+
+      await fetchDispositivos()
     } catch (error) {
       console.error("Error al importar datos:", error)
-      setError(`Error al importar datos: ${error.response?.data?.detail || error.message}`)
+      setImportProgress(null)
+
+      let errorMessage = "Error al importar datos"
+      if (error.response) {
+        if (error.response.data && error.response.data.error) {
+          errorMessage = error.response.data.error
+        } else if (error.response.status === 413) {
+          errorMessage = "El archivo es demasiado grande (límite 10MB)"
+        } else if (error.response.status === 400) {
+          errorMessage = error.response.data.detail || "Datos inválidos en el archivo"
+        }
+      } else if (error.message.includes("Network Error")) {
+        errorMessage = "Error de conexión con el servidor"
+      }
+
+      setError(errorMessage)
     } finally {
       setLoading(false)
-      event.target.value = ""
+      const fileInput = document.querySelector('input[type="file"]')
+      if (fileInput) {
+        fileInput.value = ""
+      }
+      setSelectedFile(null)
+      setSelectedImportSede("")
+    }
+  }
+
+  const cancelarImportacion = () => {
+    setShowSedeSelector(false)
+    setSelectedImportSede("")
+    setSelectedFile(null)
+    const fileInput = document.querySelector('input[type="file"]')
+    if (fileInput) {
+      fileInput.value = ""
     }
   }
 
@@ -382,6 +414,7 @@ const Inventario = () => {
       <div className="main-content">
         {error && (
           <div className="error-banner">
+            <AlertCircle size={18} />
             <span>{error}</span>
             <button onClick={() => setError(null)}>×</button>
           </div>
@@ -389,8 +422,42 @@ const Inventario = () => {
 
         {success && (
           <div className="success-banner">
+            <CheckCircle size={18} />
             <span>{success}</span>
             <button onClick={() => setSuccess(null)}>×</button>
+          </div>
+        )}
+
+        {importProgress && (
+          <div className="info-banner">
+            <span>{importProgress}</span>
+          </div>
+        )}
+
+        {importResults && (
+          <div className={`import-results ${importResults.errors ? "has-errors" : ""}`}>
+            <h3>Resultados de la importación</h3>
+            <p>Total procesados: {importResults.total}</p>
+            <p>Dispositivos creados: {importResults.created}</p>
+            <p>Dispositivos actualizados: {importResults.updated}</p>
+
+            {importResults.errors && (
+              <div className="import-errors">
+                <h4>Errores encontrados ({importResults.errors.length}):</h4>
+                <div className="errors-list">
+                  {importResults.errors.slice(0, 10).map((error, index) => (
+                    <div key={index} className="error-item">
+                      {error}
+                    </div>
+                  ))}
+                  {importResults.errors.length > 10 && <div>... y {importResults.errors.length - 10} errores más</div>}
+                </div>
+              </div>
+            )}
+
+            <button onClick={() => setImportResults(null)} className="close-results">
+              Cerrar
+            </button>
           </div>
         )}
 
@@ -486,30 +553,26 @@ const Inventario = () => {
           <table className="inventory-tablet">
             <thead>
               <tr>
-                {[
-                  "Piso",
-                  "Posición",
-                  "Servicio",
-                  "Código Analítico",
-                  "Tipo Dispositivo",
-                  "Fabricante",
-                  "Serial",
-                  "CU(placa_cu)",
-                  "Sistema Operativo",
-                  "Procesador",
-                  "Disco Duro",
-                  "Memoria RAM",
-                  "Proveedor",
-                  "Estado Proveedor",
-                  "Razón Social",
-                  "Ubicación",
-                  "Estado",
-                  "Observación",
-                  "Regimen",
-                  "Acciones",
-                ].map((head) => (
-                  <th key={head}>{head}</th>
-                ))}
+                <th>Piso</th>
+                <th>Posición</th>
+                <th>Servicio</th>
+                <th>Código Analítico</th>
+                <th>Tipo Dispositivo</th>
+                <th>Fabricante</th>
+                <th>Serial</th>
+                <th>CU(placa_cu)</th>
+                <th>Sistema Operativo</th>
+                <th>Procesador</th>
+                <th>Disco Duro</th>
+                <th>Memoria RAM</th>
+                <th>Proveedor</th>
+                <th>Estado Proveedor</th>
+                <th>Razón Social</th>
+                <th>Ubicación</th>
+                <th>Estado</th>
+                <th>Observación</th>
+                <th>Regimen</th>
+                <th>Acciones</th>
               </tr>
             </thead>
             <tbody>
@@ -530,49 +593,43 @@ const Inventario = () => {
                   </td>
                 </tr>
               ) : (
-                currentItems.map((dispositivo) => {
-                  const nombreSede = getNombreSede(dispositivo)
-                  const posicionInfo = dispositivo.posicion || {}
-                  const servicioInfo = posicionInfo.servicio || {}
-
-                  return (
-                    <tr key={dispositivo.id}>
-                      <td>{dispositivo.piso || posicionInfo.piso || "-"}</td>
-                      <td>{posicionInfo.nombre || "-"}</td>
-                      <td>{servicioInfo.nombre || "-"}</td>
-                      <td>{servicioInfo.codigo_analitico || "-"}</td>
-                      <td>{dispositivo.tipo || "-"}</td>
-                      <td>{dispositivo.marca || "-"}</td>
-                      <td>{dispositivo.serial || "-"}</td>
-                      <td>{dispositivo.placa_cu || "-"}</td>
-                      <td>{dispositivo.sistema_operativo || "-"}</td>
-                      <td>{dispositivo.procesador || "-"}</td>
-                      <td>{dispositivo.capacidad_disco_duro || "-"}</td>
-                      <td>{dispositivo.capacidad_memoria_ram || "-"}</td>
-                      <td>{dispositivo.proveedor || "-"}</td>
-                      <td>{dispositivo.estado_propiedad || "-"}</td>
-                      <td>{dispositivo.razon_social || "-"}</td>
-                      <td>{dispositivo.ubicacion || "-"}</td>
-                      <td>
-                        <span className={`estado-badge estado-${dispositivo.estado?.toLowerCase() || "desconocido"}`}>
-                          {dispositivo.estado || "-"}
-                        </span>
-                      </td>
-                      <td>{dispositivo.observaciones || "-"}</td>
-                      <td>{dispositivo.regimen || "-"}</td>
-                      <td>
-                        <button
-                          onClick={() => handleDelete(dispositivo.id)}
-                          className="delete-buttont"
-                          disabled={loading}
-                          title="Eliminar dispositivo"
-                        >
-                          <Trash2 size={18} />
-                        </button>
-                      </td>
-                    </tr>
-                  )
-                })
+                currentItems.map((dispositivo) => (
+                  <tr key={dispositivo.id}>
+                    <td>{dispositivo.piso || "-"}</td>
+                    <td>{dispositivo.posicion_nombre || "-"}</td>
+                    <td>{dispositivo.servicio_nombre || "-"}</td>
+                    <td>{dispositivo.codigo_analitico || "-"}</td>
+                    <td>{dispositivo.tipo || "-"}</td>
+                    <td>{dispositivo.marca || "-"}</td>
+                    <td>{dispositivo.serial || "Sin serial"}</td>
+                    <td>{dispositivo.placa_cu || "-"}</td>
+                    <td>{dispositivo.sistema_operativo || "-"}</td>
+                    <td>{dispositivo.procesador || "-"}</td>
+                    <td>{dispositivo.capacidad_disco_duro || "-"}</td>
+                    <td>{dispositivo.capacidad_memoria_ram || "-"}</td>
+                    <td>{dispositivo.proveedor || "-"}</td>
+                    <td>{dispositivo.estado_propiedad || "-"}</td>
+                    <td>{dispositivo.razon_social || "-"}</td>
+                    <td>{dispositivo.ubicacion || "-"}</td>
+                    <td>
+                      <span className={`estado-badge estado-${dispositivo.estado?.toLowerCase() || "desconocido"}`}>
+                        {dispositivo.estado || "-"}
+                      </span>
+                    </td>
+                    <td>{dispositivo.observaciones || "-"}</td>
+                    <td>{dispositivo.regimen || "-"}</td>
+                    <td>
+                      <button
+                        onClick={() => handleDelete(dispositivo.id)}
+                        className="delete-buttont"
+                        disabled={loading}
+                        title="Eliminar dispositivo"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </td>
+                  </tr>
+                ))
               )}
             </tbody>
           </table>
@@ -653,6 +710,37 @@ const Inventario = () => {
         )}
       </div>
 
+      {showSedeSelector && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <h2>Seleccionar Sede para Importación</h2>
+            <p>Seleccione la sede a la que se asignarán los dispositivos importados:</p>
+
+            <select
+              value={selectedImportSede}
+              onChange={(e) => setSelectedImportSede(e.target.value)}
+              className="sede-select"
+            >
+              <option value="">-- Seleccione una sede --</option>
+              {sedes.map((sede) => (
+                <option key={sede.id} value={sede.id}>
+                  {sede.nombre}
+                </option>
+              ))}
+            </select>
+
+            <div className="modal-buttons">
+              <button onClick={procesarImportacion} className="confirm-button" disabled={!selectedImportSede}>
+                Continuar Importación
+              </button>
+              <button onClick={cancelarImportacion} className="cancel-button">
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <style jsx>{`
         @keyframes spin {
           0% { transform: rotate(0deg); }
@@ -669,6 +757,7 @@ const Inventario = () => {
           display: flex;
           justify-content: space-between;
           align-items: center;
+          gap: 0.5rem;
         }
         
         .success-banner {
@@ -681,6 +770,84 @@ const Inventario = () => {
           display: flex;
           justify-content: space-between;
           align-items: center;
+          gap: 0.5rem;
+        }
+        
+        .info-banner {
+          padding: 1rem;
+          background-color: #e3f2fd;
+          color: #1565c0;
+          border-radius: 4px;
+          margin-bottom: 1rem;
+          border: 1px solid #90caf9;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        }
+        
+        .import-results {
+          padding: 1.5rem;
+          background-color: #f5f5f5;
+          border-radius: 8px;
+          margin: 1rem 0;
+          border: 1px solid #e0e0e0;
+        }
+        
+        .import-results.has-errors {
+          border-left: 4px solid #ff9800;
+        }
+        
+        .import-results h3 {
+          margin-top: 0;
+          color: #333;
+        }
+        
+        .import-results p {
+          margin: 0.5rem 0;
+        }
+        
+        .import-errors {
+          margin-top: 1rem;
+          padding-top: 1rem;
+          border-top: 1px dashed #ccc;
+        }
+        
+        .import-errors h4 {
+          margin-bottom: 0.5rem;
+          color: #d32f2f;
+        }
+        
+        .errors-list {
+          max-height: 200px;
+          overflow-y: auto;
+          background-color: #fff;
+          padding: 0.5rem;
+          border-radius: 4px;
+          border: 1px solid #eee;
+        }
+        
+        .error-item {
+          padding: 0.25rem 0;
+          border-bottom: 1px solid #f5f5f5;
+          font-size: 0.9rem;
+        }
+        
+        .error-item:last-child {
+          border-bottom: none;
+        }
+        
+        .close-results {
+          margin-top: 1rem;
+          padding: 0.5rem 1rem;
+          background-color: #1976d2;
+          color: white;
+          border: none;
+          border-radius: 4px;
+          cursor: pointer;
+        }
+        
+        .close-results:hover {
+          background-color: #1565c0;
         }
         
         .charts-container {
@@ -718,6 +885,82 @@ const Inventario = () => {
         .estado-sede { background-color: #e0f7fa; color: #00838f; }
         .estado-stock { background-color: #f1f8e9; color: #558b2f; }
         .estado-desconocido { background-color: #eceff1; color: #455a64; }
+        
+        /* Estilos para el modal */
+        .modal-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background-color: rgba(0, 0, 0, 0.5);
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          z-index: 1000;
+        }
+        
+        .modal-content {
+          background-color: white;
+          padding: 2rem;
+          border-radius: 8px;
+          width: 90%;
+          max-width: 500px;
+          box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        .modal-content h2 {
+          margin-top: 0;
+          color: #333;
+          font-size: 1.5rem;
+        }
+        
+        .sede-select {
+          width: 100%;
+          padding: 0.75rem;
+          margin: 1rem 0;
+          border: 1px solid #ddd;
+          border-radius: 4px;
+          font-size: 1rem;
+        }
+        
+        .modal-buttons {
+          display: flex;
+          justify-content: flex-end;
+          gap: 1rem;
+          margin-top: 1.5rem;
+        }
+        
+        .confirm-button {
+          padding: 0.5rem 1rem;
+          background-color: #1976d2;
+          color: white;
+          border: none;
+          border-radius: 4px;
+          cursor: pointer;
+        }
+        
+        .confirm-button:disabled {
+          background-color: #b0bec5;
+          cursor: not-allowed;
+        }
+        
+        .confirm-button:hover:not(:disabled) {
+          background-color: #1565c0;
+        }
+        
+        .cancel-button {
+          padding: 0.5rem 1rem;
+          background-color: #f5f5f5;
+          color: #333;
+          border: 1px solid #ddd;
+          border-radius: 4px;
+          cursor: pointer;
+        }
+        
+        .cancel-button:hover {
+          background-color: #e0e0e0;
+        }
       `}</style>
     </div>
   )

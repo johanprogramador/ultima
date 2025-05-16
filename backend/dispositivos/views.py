@@ -854,114 +854,179 @@ def encontrar_servicio_mas_parecido(nombre_servicio):
     if puntuacion >= 80:
         return next((s for s in servicios if s[0] == mejor_coincidencia), None)
     return None
-
-@api_view(['POST'])
-@parser_classes([MultiPartParser])
-@permission_classes([])
+@api_view(['POST', 'GET'])
+@permission_classes([IsAuthenticated])  # Requiere autenticación
 def importar_dispositivos(request):
-    file = request.FILES.get('file')
-
-    if not file:
-        return JsonResponse({'error': 'No se ha subido ningún archivo'}, status=400)
-
-    errores = []
-    dispositivos = []
-
+    if 'file' not in request.FILES:
+        return Response({'error': 'No se proporcionó archivo'}, status=status.HTTP_400_BAD_REQUEST)
+    
     try:
-        df = pd.read_excel(file)
-
+        file = request.FILES['file']
+        sede_id = request.POST.get('sede_id')
+        
+        if not sede_id:
+            return Response({'error': 'No se proporcionó ID de sede'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        try:
+            sede = Sede.objects.get(id=sede_id)
+        except Sede.DoesNotExist:
+            return Response({'error': f'Sede con ID {sede_id} no encontrada'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if not file.name.endswith(('.xlsx', '.xls')):
+            return Response({'error': 'Formato de archivo no válido. Solo se aceptan .xlsx o .xls'}, 
+                            status=status.HTTP_400_BAD_REQUEST)
+        
+        if file.size > 10 * 1024 * 1024:
+            return Response({'error': 'El archivo es demasiado grande (máximo 10MB)'}, 
+                            status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            df = pd.read_excel(file)
+            logger.info(f"Columnas detectadas en el archivo: {df.columns.tolist()}")
+        except Exception as e:
+            return Response({'error': f'Error al leer el archivo Excel: {str(e)}'}, 
+                            status=status.HTTP_400_BAD_REQUEST)
+        
         if df.empty:
-            return JsonResponse({'error': 'El archivo está vacío'}, status=400)
+            return Response({'error': 'El archivo está vacío'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Normalizar nombres de columnas
+        df.columns = [str(col).upper().strip().replace(' ', '_').replace('Ó', 'O').replace('É', 'E').replace('Á', 'A') for col in df.columns]
+        
+        batch_size = 100
+        total_rows = len(df)
+        created = 0
+        updated = 0
+        errors = []
 
-        logger.info(f"Primeras filas del DataFrame: {df.head()}")
+        with transaction.atomic():
+            for i in range(0, total_rows, batch_size):
+                batch = df.iloc[i:i+batch_size]
+                for idx, row in batch.iterrows():
+                    row_num = idx + 2  # +2 porque Excel empieza en 1 y hay encabezado
+                    try:
+                        row_data = {}
+                        for key, value in row.items():
+                            if pd.isna(value):
+                                row_data[key.lower()] = None
+                            elif isinstance(value, str) and value.strip().upper() in ['NA', 'N/A', '-']:
+                                row_data[key.lower()] = None
+                            elif isinstance(value, str):
+                                row_data[key.lower()] = value.strip()
+                            else:
+                                row_data[key.lower()] = value
+                        
+                        # Establecer valores por defecto para campos importantes
+                        if not row_data.get('tipo_dispositivo'):
+                            row_data['tipo_dispositivo'] = 'COMPUTADOR'
+                        
+                        if not row_data.get('modelo'):
+                            row_data['modelo'] = 'SIN MODELO'
+                        
+                        # Procesar servicio si existe en el Excel
+                        servicio = None
+                        if row_data.get('servicio'):
+                            servicio_nombre = str(row_data['servicio']).strip()
+                            servicio, _ = Servicios.objects.get_or_create(
+                                nombre=servicio_nombre,
+                                defaults={'codigo_analitico': f'SERV-{servicio_nombre[:3].upper()}'}
+                            )
+                        
+                        # Buscar posición si existe
+                        posicion = None
+                        if row_data.get('posicion'):
+                            posicion_nombre = str(row_data['posicion']).strip()
+                            piso = row_data.get('piso', None)
+                            
+                            # Buscar posición por nombre y piso en la sede
+                            if piso:
+                                posicion = Posicion.objects.filter(
+                                    nombre__iexact=posicion_nombre,
+                                    piso__iexact=piso,
+                                    sede=sede
+                                ).first()
+                            else:
+                                posicion = Posicion.objects.filter(
+                                    nombre__iexact=posicion_nombre,
+                                    sede=sede
+                                ).first()
+                            
+                            # Si encontramos la posición y hay servicio, actualizamos el servicio
+                            if posicion and servicio:
+                                posicion.servicio = servicio
+                                posicion.save()
+                        
+                        # Mapeo de nombres de columnas del Excel a campos del modelo
+                        dispositivo_data = {
+                            'tipo': row_data.get('tipo_dispositivo'),
+                            'marca': row_data.get('fabricante'),
+                            'modelo': row_data.get('modelo'),
+                            'serial': row_data.get('serial'),  # Puede ser null
+                            'placa_cu': row_data.get('cu'),
+                            'sistema_operativo': row_data.get('sistema_operativo'),
+                            'procesador': row_data.get('procesador'),
+                            'capacidad_disco_duro': row_data.get('disco_duro'),
+                            'capacidad_memoria_ram': row_data.get('memoria_ram'),
+                            'proveedor': row_data.get('proveedor'),
+                            'estado_propiedad': row_data.get('estado_proveedor'),
+                            'razon_social': row_data.get('razon_social') or row_data.get('razón_social'),
+                            'ubicacion': row_data.get('ubicacion') or row_data.get('ubicación'),
+                            'estado': row_data.get('estado', 'BUENO'),  # Valor por defecto
+                            'observaciones': row_data.get('observacion') or row_data.get('observación'),
+                            'regimen': row_data.get('regimen'),
+                            'piso': row_data.get('piso'),
+                            'sede': sede,
+                            'posicion': posicion
+                        }
+                        
+                        logger.debug(f"Datos mapeados para fila {row_num}: {dispositivo_data}")
+                        
+                        # Mantener estos campos incluso si son None
+                        campos_a_mantener = [
+                            'serial', 'razon_social', 'ubicacion', 'observaciones', 
+                            'estado_propiedad', 'regimen', 'piso'
+                        ]
+                        dispositivo_data = {
+                            k: v for k, v in dispositivo_data.items() 
+                            if v is not None or k in campos_a_mantener
+                        }
+                        
+                        # Buscar por serial si existe, o crear nuevo si no hay serial
+                        if row_data.get('serial'):
+                            dispositivo, created_flag = Dispositivo.objects.update_or_create(
+                                serial=row_data['serial'],
+                                defaults=dispositivo_data
+                            )
+                        else:
+                            dispositivo = Dispositivo.objects.create(**dispositivo_data)
+                            created_flag = True
 
-        for index, row in df.iterrows():
-            try:
-                tipo = str(row.get("Tipo Dispositivo", "")).strip()
-                serial = str(row.get("Serial", "")).strip()
-
-                if not tipo:
-                    raise ValueError("Tipo de dispositivo es obligatorio")
-                if not serial:
-                    raise ValueError("Serial es obligatorio")
-
-                servicio_nombre = str(row.get("Servicio", "")).strip()
-                servicio = encontrar_servicio_mas_parecido(servicio_nombre)
-
-                if not servicio:
-                    raise ValueError(f"Servicio '{servicio_nombre}' no encontrado o no coincide suficientemente")
-
-                codigo_analitico = servicio[1]
-                sede = Sede.objects.filter(servicios__codigo_analitico=codigo_analitico).first()
-
-                if not sede:
-                    raise ValueError(f"Sede con código analítico '{codigo_analitico}' no encontrada")
-
-                piso = str(row.get("Piso", "")).strip()
-                posicion_valor = str(row.get("Posición", "")).strip()
-
-                if not piso or not posicion_valor:
-                    raise ValueError("Piso y posición son obligatorios")
-
-                posicion_obj = Posicion.objects.filter(piso=piso, nombre=posicion_valor, sede=sede).first()
-
-                if not posicion_obj:
-                    raise ValueError(f"Posición '{piso}-{posicion_valor}' no encontrada en la sede '{sede.nombre}'")
-
-                dispositivo = Dispositivo(
-                    tipo=tipo,
-                    marca=str(row.get("Fabricante", "")).strip(),
-                    modelo=str(row.get("Modelo", "")).strip(),
-                    serial=serial,
-                    estado=str(row.get("Estado", "")).strip(),
-                    sede=sede,
-                    posicion=posicion_obj,
-                    ubicacion=str(row.get("Ubicación", "")).strip(),
-                    placa_cu=str(row.get("CU", "")).strip(),
-                    sistema_operativo=str(row.get("Sistema Operativo", "")).strip(),
-                    procesador=str(row.get("Procesador", "")).strip(),
-                    capacidad_disco_duro=str(row.get("Disco Duro", "")).strip(),
-                    capacidad_memoria_ram=str(row.get("Memoria RAM", "")).strip(),
-                    proveedor=str(row.get("Proveedor", "")).strip(),
-                    estado_propiedad=str(row.get("Estado Proveedor", "")).strip(),
-                    razon_social=str(row.get("Razón Social", "")).strip(),
-                    regimen=str(row.get("Regimen", "")).strip(),
-                )
-                dispositivos.append(dispositivo)
-
-            except ValueError as ve:
-                error_msg = f"Error en fila {index + 2}: {str(ve)}"
-                logger.error(error_msg)
-                errores.append({
-                    'fila': index + 2,
-                    'error': str(ve),
-                    'datos': row.to_dict()
-                })
-            except Exception as e:
-                error_msg = f"Error inesperado en fila {index + 2}: {str(e)}"
-                logger.error(error_msg)
-                errores.append({
-                    'fila': index + 2,
-                    'error': f"Error inesperado: {str(e)}",
-                    'datos': row.to_dict()
-                })
-
-        if dispositivos:
-            try:
-                with transaction.atomic():
-                    Dispositivo.objects.bulk_create(dispositivos, ignore_conflicts=True)
-            except Exception as e:
-                logger.error(f"Error al guardar en la BD: {str(e)}")
-                return JsonResponse({'error': f"Error al guardar en la BD: {str(e)}"}, status=500)
-
-        return JsonResponse({
-            'message': f'{len(dispositivos)} dispositivos importados correctamente',
-            'errores': errores
-        }, status=201 if not errores else 207)
-
+                        if created_flag:
+                            created += 1
+                        else:
+                            updated += 1
+                    
+                    except Exception as e:
+                        logger.error(f'Error procesando fila {row_num}: {str(e)}', exc_info=True)
+                        errors.append(f'Fila {row_num}: Error al procesar - {str(e)}')
+                        continue
+        
+        result = {
+            'message': 'Importación completada',
+            'total': total_rows,
+            'created': created,
+            'updated': updated,
+            'errors': errors if errors else None
+        }
+        if errors:
+            result['warning'] = f'Se encontraron {len(errors)} errores'
+        
+        return Response(result, status=status.HTTP_200_OK)
+    
     except Exception as e:
-        logger.error(f"Error inesperado: {str(e)}")
-        return JsonResponse({'error': f"Error inesperado: {str(e)}"}, status=500)
+        logger.error(f'Error en importación: {str(e)}', exc_info=True)
+        return Response({'error': f'Error en el servidor: {str(e)}'}, 
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @csrf_exempt
 @permission_classes([AllowAny])
@@ -1636,3 +1701,4 @@ def movimientos_por_sede(request):
             'error': str(e),
             'message': 'Error al obtener los movimientos por sede'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+

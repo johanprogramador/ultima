@@ -67,15 +67,15 @@ const MovimientosPorSede = () => {
             const exampleData = [
               {
                 name: processedData[0].name,
-                value: 4,
+                value: 0,
                 fill: COLORS[0],
               },
             ]
             setData(exampleData)
           } else {
-            setData([{ name: "nevado 2", value: 4, fill: COLORS[0] }])
+            setData([{ name: "nevado 2", value: 0, fill: COLORS[0] }])
           }
-          setTotalMovimientos(4)
+          setTotalMovimientos(0)
         } else {
           setData(filteredData.length > 0 ? filteredData : processedData)
           setTotalMovimientos(result.total_movimientos || processedData.reduce((sum, item) => sum + item.value, 0))
@@ -92,7 +92,7 @@ const MovimientosPorSede = () => {
           { name: "Sede 2", value: 1, fill: COLORS[1] },
         ]
         setData(exampleData)
-        setTotalMovimientos(4)
+        setTotalMovimientos(0)
         setTotalSedes(2)
         setLoading(false)
       } finally {

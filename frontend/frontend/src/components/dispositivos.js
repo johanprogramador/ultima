@@ -47,7 +47,7 @@ const Dispositivos = () => {
   const [itemsPerPage] = useState(10)
   const [totalPages, setTotalPages] = useState(1)
 
-  // Opciones de selección
+  // Opciones de selección (solo para campos que siguen siendo choices)
   const tiposDispositivos = [
     { value: 'COMPUTADOR', label: 'Computador' },
     { value: 'DESKTOP', label: 'Desktop' },
@@ -57,14 +57,6 @@ const Dispositivos = () => {
     { value: 'HP_PRODISPLAY_P201', label: 'HP ProDisplay P201' },
     { value: 'PORTATIL', label: 'Portátil' },
     { value: 'TODO_EN_UNO', label: 'Todo en uno' },
-  ]
-
-  const fabricantes = [
-    { value: 'DELL', label: 'Dell' },
-    { value: 'HP', label: 'HP' },
-    { value: 'LENOVO', label: 'Lenovo' },
-    { value: 'APPLE', label: 'Apple' },
-    { value: 'SAMSUNG', label: 'Samsung' },
   ]
 
   const estadosDispositivo = [
@@ -79,71 +71,6 @@ const Dispositivos = () => {
     { value: 'REPARAR_BAJA', label: 'Reparar/Baja' },
     { value: 'SEDE', label: 'Sede' },
     { value: 'STOCK', label: 'Stock' },
-  ]
-
-  const razonesSociales = [
-    { value: 'ECCC', label: 'ECCC' },
-    { value: 'ECOL', label: 'ECOL' },
-    { value: 'CNC', label: 'CNC' },
-    { value: 'BODEGA_CN', label: 'Bodega CN' },
-    { value: 'COMPRADO', label: 'Comprado' },
-    { value: 'PROPIO', label: 'Propio' },
-  ]
-
-  const capacidadesDiscoDuro = [
-    { value: '120GB', label: '120 GB' },
-    { value: '250GB', label: '250 GB' },
-    { value: '500GB', label: '500 GB' },
-    { value: '1TB', label: '1 TB' },
-    { value: '2TB', label: '2 TB' },
-    { value: '4TB', label: '4 TB' },
-    { value: '8TB', label: '8 TB' },
-  ]
-
-  const capacidadesMemoriaRam = [
-    { value: '2GB', label: '2 GB' },
-    { value: '4GB', label: '4 GB' },
-    { value: '8GB', label: '8 GB' },
-    { value: '16GB', label: '16 GB' },
-    { value: '32GB', label: '32 GB' },
-    { value: '64GB', label: '64 GB' },
-  ]
-  
-  const sistemasOperativos = [
-    { value: 'NA', label: 'No Aplica' },
-    { value: 'SERVER', label: 'Server' },
-    { value: 'WIN10', label: 'Windows 10' },
-    { value: 'WIN11', label: 'Windows 11' },
-    { value: 'WIN7', label: 'Windows 7' },
-    { value: 'VACIO', label: 'Sin Sistema Operativo' },
-    { value: 'MACOS', label: 'MacOS' },
-  ]
-
-  const procesadores = [
-    { value: 'AMD_A12', label: 'AMD A12' },
-    { value: 'AMD_A8_5500B', label: 'AMD A8-5500B APU' },
-    { value: 'AMD_RYZEN', label: 'AMD RYZEN' },
-    { value: 'AMD_RYZEN_3_2200GE', label: 'AMD Ryzen 3 2200GE' },
-    { value: 'I3_6200U', label: 'Intel Core i3 6200U' },
-    { value: 'I5_4430S', label: 'Intel Core i5 4430s' },
-    { value: 'I5_4460', label: 'Intel Core i5 4460' },
-    { value: 'I5_4590', label: 'Intel Core i5 4590' },
-    { value: 'I5_4600', label: 'Intel Core i5 4600' },
-    { value: 'I5_4670', label: 'Intel Core i5 4670' },
-    { value: 'I5_4750', label: 'Intel Core i5 4750' },
-    { value: 'I5_6500', label: 'Intel Core i5 6500' },
-    { value: 'I5_6500T', label: 'Intel Core i5 6500T' },
-    { value: 'I5_7500', label: 'Intel Core i5 7500' },
-    { value: 'I5_8400T', label: 'Intel Core i5 8400T' },
-    { value: 'I5_8500', label: 'Intel Core i5 8500' },
-    { value: 'I5_10TH', label: 'Intel Core i5 10th Gen' },
-    { value: 'I5_11TH', label: 'Intel Core i5 11th Gen' },
-    { value: 'I5_12TH', label: 'Intel Core i5 12th Gen' },
-    { value: 'I7_8TH', label: 'Intel Core i7 8th Gen' },
-    { value: 'I7_12TH', label: 'Intel Core i7 12th Gen' },
-    { value: 'I7_13TH', label: 'Intel Core i7 13th Gen' },
-    { value: 'I7_7TH', label: 'Intel Core i7 7th Gen' },
-    { value: 'I7_8565U', label: 'Intel Core i7 8565U @ 1.80GHz' },
   ]
 
   const ubicaciones = [
@@ -171,7 +98,7 @@ const Dispositivos = () => {
       tipo: "",
       marca: "",
       modelo: "",
-      serial: "",
+      serial: null,
       estado: "",
       estado_uso: "",
       capacidad_memoria_ram: "",
@@ -293,10 +220,10 @@ const Dispositivos = () => {
   }
 
   function validateDevice(device) {
-    if (!device.modelo || !device.serial) {
+    if (!device.modelo) {
       setAlert({
         show: true,
-        message: "El modelo y el serial son campos obligatorios.",
+        message: "El modelo es un campo obligatorio.",
         type: "error",
       })
       return false
@@ -515,7 +442,7 @@ const Dispositivos = () => {
           Tipo: device.tipo || "",
           Marca: device.marca || "",
           Modelo: device.modelo || "",
-          Serial: device.serial || "",
+          Serial: device.serial || "Sin serial",
           Estado: device.estado || "",
           "Estado de Uso": device.estado_uso || "",
           "Sistema Operativo": device.sistema_operativo || "",
@@ -646,7 +573,7 @@ const Dispositivos = () => {
               <div className="user-name">
                 {device.tipo} - {device.marca} {device.modelo}
               </div>
-              <div className="user-access">Serial: {device.serial}</div>
+              <div className="user-access">Serial: {device.serial || "Sin serial"}</div>
               <div className="user-details">
                 <span>Estado: {device.estado} </span>
                 {device.placa_cu && <span> Placa: {device.placa_cu}</span>}
@@ -682,16 +609,10 @@ const Dispositivos = () => {
     sedes,
     usuarios,
     tiposDispositivos,
-    fabricantes,
     estadosDispositivo,
     estadosUso,
-    sistemasOperativos,
-    procesadores,
     ubicaciones,
-    razonesSociales,
     estadosPropiedad,
-    capacidadesMemoriaRam,
-    capacidadesDiscoDuro,
   }) => {
     useEffect(() => {
       if ((device.estado === 'MALO' || device.estado === 'MALA') && device.estado_uso !== 'INHABILITADO') {
@@ -699,15 +620,19 @@ const Dispositivos = () => {
       }
     }, [device.estado, setDevice])
 
-    const renderInput = (label, field) => (
+    const handleInputChange = (field, value) => {
+      setDevice(prev => ({ ...prev, [field]: value }))
+    }
+
+    const renderInput = (label, field, required = false) => (
       <div className="input-group">
-        <label>{label}</label>
+        <label>{label}{required ? "*" : ""}</label>
         <input
           type="text"
           value={device[field] || ""}
-          onChange={(e) => setDevice({ ...device, [field]: e.target.value })}
+          onChange={(e) => handleInputChange(field, e.target.value)}
           placeholder={label}
-          required={label.includes("*")}
+          required={required}
         />
       </div>
     )
@@ -721,8 +646,7 @@ const Dispositivos = () => {
           <label>{label}</label>
           <select
             value={device[field] || ""}
-            onChange={(e) => setDevice({ ...device, [field]: e.target.value || null })}
-            required={label.includes("*")}
+            onChange={(e) => handleInputChange(field, e.target.value)}
             disabled={isDisabled}
           >
             <option value="">Seleccione una opción</option>
@@ -748,25 +672,25 @@ const Dispositivos = () => {
         <div className="form-columns">
           <div className="form-column">
             {renderSelect("Tipo*", "tipo", tiposDispositivos)}
-            {renderSelect("Marca*", "marca", fabricantes)}
-            {renderInput("Modelo*", "modelo")}
-            {renderInput("Serial*", "serial")}
+            {renderInput("Marca*", "marca", true)}
+            {renderInput("Modelo*", "modelo", true)}
+            {renderInput("Serial", "serial")}
             {renderInput("Placa CU", "placa_cu")}
-            {renderSelect("Estado*", "estado", estadosDispositivo)}
+            {renderSelect("Estado", "estado", estadosDispositivo)}
             {renderSelect("Estado de Uso", "estado_uso", estadosUso.map(estado => ({
               ...estado,
               disabled: (device.estado === 'MALO' || device.estado === 'MALA') && 
                         estado.value !== 'INHABILITADO'
             })))}
-            {renderSelect("Sistema Operativo", "sistema_operativo", sistemasOperativos)}
-            {renderSelect("Procesador", "procesador", procesadores)}
+            {renderInput("Sistema Operativo", "sistema_operativo")}
+            {renderInput("Procesador", "procesador")}
           </div>
 
           <div className="form-column">
-            {renderSelect("Capacidad Memoria RAM", "capacidad_memoria_ram", capacidadesMemoriaRam)}
-            {renderSelect("Capacidad Disco Duro", "capacidad_disco_duro", capacidadesDiscoDuro)}
+            {renderInput("Capacidad Memoria RAM", "capacidad_memoria_ram")}
+            {renderInput("Capacidad Disco Duro", "capacidad_disco_duro")}
             {renderSelect("Ubicación", "ubicacion", ubicaciones)}
-            {renderSelect("Razón Social", "razon_social", razonesSociales)}
+            {renderInput("Razón Social", "razon_social")}
             {renderInput("Régimen", "regimen")}
             {renderSelect("Estado Propiedad", "estado_propiedad", estadosPropiedad)}
             {renderInput("Proveedor", "proveedor")}
@@ -802,7 +726,7 @@ const Dispositivos = () => {
               <label>Observaciones</label>
               <textarea
                 value={device.observaciones || ""}
-                onChange={(e) => setDevice({ ...device, observaciones: e.target.value })}
+                onChange={(e) => handleInputChange("observaciones", e.target.value)}
                 placeholder="Observaciones adicionales"
                 rows="3"
               />
@@ -907,16 +831,10 @@ const Dispositivos = () => {
                   sedes={sedes}
                   usuarios={usuarios}
                   tiposDispositivos={tiposDispositivos}
-                  fabricantes={fabricantes}
                   estadosDispositivo={estadosDispositivo}
                   estadosUso={estadosUso}
-                  sistemasOperativos={sistemasOperativos}
-                  procesadores={procesadores}
                   ubicaciones={ubicaciones}
-                  razonesSociales={razonesSociales}
                   estadosPropiedad={estadosPropiedad}
-                  capacidadesMemoriaRam={capacidadesMemoriaRam}
-                  capacidadesDiscoDuro={capacidadesDiscoDuro}
                 />
               </div>
             </div>
@@ -939,16 +857,10 @@ const Dispositivos = () => {
                   sedes={sedes}
                   usuarios={usuarios}
                   tiposDispositivos={tiposDispositivos}
-                  fabricantes={fabricantes}
                   estadosDispositivo={estadosDispositivo}
                   estadosUso={estadosUso}
-                  sistemasOperativos={sistemasOperativos}
-                  procesadores={procesadores}
                   ubicaciones={ubicaciones}
-                  razonesSociales={razonesSociales}
                   estadosPropiedad={estadosPropiedad}
-                  capacidadesMemoriaRam={capacidadesMemoriaRam}
-                  capacidadesDiscoDuro={capacidadesDiscoDuro}
                 />
               </div>
             </div>
