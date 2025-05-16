@@ -239,14 +239,6 @@ class Dispositivo(models.Model):
         ('TODO_EN_UNO', 'Todo en uno'),
     ]
 
-    FABRICANTES = [
-        ('DELL', 'Dell'),
-        ('HP', 'HP'),
-        ('LENOVO', 'Lenovo'),
-        ('APPLE', 'Apple'),
-        ('SAMSUNG', 'Samsung'),
-    ]
-
     ESTADO_DISPOSITIVO = [
         ('BUENO', 'Bueno'),
         ('BODEGA_CN', 'Bodega CN'),
@@ -259,71 +251,6 @@ class Dispositivo(models.Model):
         ('REPARAR_BAJA', 'Reparar/Baja'),
         ('SEDE', 'Sede'),
         ('STOCK', 'Stock'),
-    ]
-
-    RAZONES_SOCIALES = [
-        ('ECCC', 'ECCC'),
-        ('ECOL', 'ECOL'),
-        ('CNC', 'CNC'),
-        ('BODEGA_CN', 'Bodega CN'),
-        ('COMPRADO', 'Comprado'),
-        ('PROPIO', 'Propio'),
-    ]
-
-    CAPACIDADES_DISCO_DURO = [
-        ('120GB', '120 GB'),
-        ('250GB', '250 GB'),
-        ('500GB', '500 GB'),
-        ('1TB', '1 TB'),
-        ('2TB', '2 TB'),
-        ('4TB', '4 TB'),
-        ('8TB', '8 TB'),
-    ]
-
-    CAPACIDADES_MEMORIA_RAM = [
-        ('2GB', '2 GB'),
-        ('4GB', '4 GB'),
-        ('8GB', '8 GB'),
-        ('16GB', '16 GB'),
-        ('32GB', '32 GB'),
-        ('64GB', '64 GB'),
-    ]
-    
-    SISTEMAS_OPERATIVOS = [
-        ('NA', 'No Aplica'),
-        ('SERVER', 'Server'),
-        ('WIN10', 'Windows 10'),
-        ('WIN11', 'Windows 11'),
-        ('WIN7', 'Windows 7'),
-        ('VACIO', 'Sin Sistema Operativo'),
-        ('MACOS', 'MacOS'),
-    ]
-
-    PROCESADORES = [
-        ('AMD_A12', 'AMD A12'),
-        ('AMD_A8_5500B', 'AMD A8-5500B APU'),
-        ('AMD_RYZEN', 'AMD RYZEN'),
-        ('AMD_RYZEN_3_2200GE', 'AMD Ryzen 3 2200GE'),
-        ('I3_6200U', 'Intel Core i3 6200U'),
-        ('I5_4430S', 'Intel Core i5 4430s'),
-        ('I5_4460', 'Intel Core i5 4460'),
-        ('I5_4590', 'Intel Core i5 4590'),
-        ('I5_4600', 'Intel Core i5 4600'),
-        ('I5_4670', 'Intel Core i5 4670'),
-        ('I5_4750', 'Intel Core i5 4750'),
-        ('I5_6500', 'Intel Core i5 6500'),
-        ('I5_6500T', 'Intel Core i5 6500T'),
-        ('I5_7500', 'Intel Core i5 7500'),
-        ('I5_8400T', 'Intel Core i5 8400T'),
-        ('I5_8500', 'Intel Core i5 8500'),
-        ('I5_10TH', 'Intel Core i5 10th Gen'),
-        ('I5_11TH', 'Intel Core i5 11th Gen'),
-        ('I5_12TH', 'Intel Core i5 12th Gen'),
-        ('I7_8TH', 'Intel Core i7 8th Gen'),
-        ('I7_12TH', 'Intel Core i7 12th Gen'),
-        ('I7_13TH', 'Intel Core i7 13th Gen'),
-        ('I7_7TH', 'Intel Core i7 7th Gen'),
-        ('I7_8565U', 'Intel Core i7 8565U @ 1.80GHz'),
     ]
 
     UBICACIONES = [
@@ -348,27 +275,27 @@ class Dispositivo(models.Model):
 
     tipo = models.CharField(max_length=20, choices=TIPOS_DISPOSITIVOS)
     estado = models.CharField(max_length=18, choices=ESTADO_DISPOSITIVO, null=True, blank=True)
-    marca = models.CharField(max_length=20, choices=FABRICANTES, db_index=True)
+    marca = models.CharField(max_length=100, db_index=True)  # Cambiado de choices a campo libre
     regimen = models.CharField(max_length=100, null=True, blank=True)
-    razon_social = models.CharField(max_length=100, choices=RAZONES_SOCIALES, null=True, blank=True)
+    razon_social = models.CharField(max_length=100, null=True, blank=True)  # Cambiado de choices a campo libre
     modelo = models.CharField(max_length=50, db_index=True)
-    serial = models.CharField(max_length=50, unique=True, db_index=True)
+    serial = models.CharField(max_length=50, unique=True, db_index=True, null=True, blank=True)  # Ahora puede ser null
     placa_cu = models.CharField(max_length=50, unique=True, null=True, blank=True)
     piso = models.CharField(max_length=10, null=True, blank=True)
     estado_propiedad = models.CharField(max_length=10, choices=ESTADOS_PROPIEDAD, null=True, blank=True)
     posicion = models.ForeignKey(Posicion, on_delete=models.SET_NULL, null=True, blank=True, related_name='dispositivos_relacionados')
     sede = models.ForeignKey('Sede', on_delete=models.SET_NULL, null=True, blank=True, related_name="dispositivos", db_index=True)
-    capacidad_disco_duro = models.CharField(max_length=10, choices=CAPACIDADES_DISCO_DURO, null=True, blank=True)
-    capacidad_memoria_ram = models.CharField(max_length=10, choices=CAPACIDADES_MEMORIA_RAM, null=True, blank=True)
+    capacidad_disco_duro = models.CharField(max_length=100, null=True, blank=True)  # Cambiado de choices a campo libre
+    capacidad_memoria_ram = models.CharField(max_length=100, null=True, blank=True)  # Cambiado de choices a campo libre
     ubicacion = models.CharField(max_length=10, choices=UBICACIONES, null=True, blank=True)
     proveedor = models.CharField(max_length=100, null=True, blank=True)
-    sistema_operativo = models.CharField(max_length=20, choices=SISTEMAS_OPERATIVOS, null=True, blank=True)
-    procesador = models.CharField(max_length=100, choices=PROCESADORES, null=True, blank=True)
+    sistema_operativo = models.CharField(max_length=100, null=True, blank=True)  # Cambiado de choices a campo libre
+    procesador = models.CharField(max_length=100, null=True, blank=True)  # Cambiado de choices a campo libre
     estado_uso = models.CharField(max_length=100, choices=ESTADO_USO, null=True, blank=True)
     observaciones = models.TextField(max_length=500, null=True, blank=True, verbose_name="Observaciones adicionales")
     
     def __str__(self):
-        return f"{self.tipo} {self.marca} {self.modelo} - {self.serial}"
+        return f"{self.tipo} {self.marca} {self.modelo} - {self.serial if self.serial else 'Sin serial'}"
 
     def clean(self):
         # Validación para asegurar que la sede del dispositivo coincida con la sede de la posición

@@ -68,6 +68,9 @@ class DispositivoSerializer(serializers.ModelSerializer):
         required=False,
         allow_null=True
     )
+    posicion_nombre = serializers.SerializerMethodField()
+    servicio_nombre = serializers.SerializerMethodField()
+    codigo_analitico = serializers.SerializerMethodField()
     tipo_display = serializers.CharField(source='get_tipo_display', read_only=True)
     estado_display = serializers.CharField(source='get_estado_display', read_only=True)
     marca_display = serializers.CharField(source='get_marca_display', read_only=True)
@@ -79,13 +82,7 @@ class DispositivoSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Dispositivo
-        fields = [
-            'id', 'tipo', 'tipo_display', 'estado', 'estado_display', 'marca', 'marca_display',
-            'razon_social', 'regimen', 'modelo', 'serial', 'placa_cu', 'posicion', 
-            'sede', 'nombre_sede', 'piso', 'capacidad_disco_duro', 'capacidad_memoria_ram',
-            'ubicacion', 'sistema_operativo', 'sistema_operativo_display', 'procesador', 
-            'proveedor', 'estado_propiedad', 'estado_uso', 'observaciones', 'is_operativo'
-        ]
+        fields = '__all__'
         extra_kwargs = {
             'serial': {'required': True, 'allow_blank': False},
             'modelo': {'required': True, 'allow_blank': False},
@@ -95,7 +92,15 @@ class DispositivoSerializer(serializers.ModelSerializer):
             'placa_cu': {'allow_blank': True},
             'observaciones': {'allow_blank': True, 'required': False}
         }
-
+    def get_posicion_nombre(self, obj):
+        return obj.posicion.nombre if obj.posicion else None
+    
+    def get_servicio_nombre(self, obj):
+        return obj.posicion.servicio.nombre if obj.posicion and obj.posicion.servicio else None
+    
+    def get_codigo_analitico(self, obj):
+        return obj.posicion.servicio.codigo_analitico if obj.posicion and obj.posicion.servicio else None
+    
     def get_nombre_sede(self, obj):
         return obj.sede.nombre if obj.sede else None
 
@@ -285,7 +290,7 @@ class PosicionSerializer(serializers.ModelSerializer):
     )
     sede_nombre = serializers.CharField(source='sede.nombre', read_only=True)
     cantidad_dispositivos = serializers.SerializerMethodField()
-    
+    servicio = ServiciosSerializer(read_only=True)
     class Meta:
         model = Posicion
         fields = '__all__'
@@ -688,6 +693,7 @@ class MovimientoSerializer(serializers.ModelSerializer):
                 validated_data['encargado'] = user.roluser
         
         return super().create(validated_data)
+    
     
     
     
